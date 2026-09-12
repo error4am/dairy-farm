@@ -6,17 +6,28 @@ import { Badge } from '../../components/Badge';
 import { Icon } from '../../components/Icon';
 import { EmptyState } from '../../components/EmptyState';
 import { AnimalForm } from './AnimalForm';
+import { HealthForm } from '../health/HealthForm';
 import { useApi } from '../../lib/useApi';
 import { useMeta } from '../../lib/MetaContext';
-import { ANIMAL_STATUS_LABELS, ANIMAL_TYPE_LABELS, GENDER_LABELS, SESSION_LABELS, STATUS_TONES } from '../../lib/constants';
+import {
+  ANIMAL_STATUS_LABELS,
+  ANIMAL_TYPE_LABELS,
+  GENDER_LABELS,
+  HEALTH_TYPE_LABELS,
+  HEALTH_TYPE_TONES,
+  SESSION_LABELS,
+  STATUS_TONES
+} from '../../lib/constants';
 import { formatAge, formatDate, formatMoney, formatQuantity } from '../../lib/format';
-import type { AnimalProfile } from '../../lib/types';
+import type { Animal, AnimalProfile } from '../../lib/types';
 
 export function AnimalProfilePage() {
   const { id } = useParams<{ id: string }>();
   const meta = useMeta();
   const [editing, setEditing] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
   const { data, loading, error } = useApi<AnimalProfile>(id ? `/animals/${id}/profile` : null);
+  const { data: animals } = useApi<Animal[]>('/animals?sort=tag_number&dir=asc');
 
   if (loading) return <div className="spinner" />;
 
@@ -53,6 +64,7 @@ export function AnimalProfilePage() {
         actions={
           <>
             <Badge tone={STATUS_TONES[a.status]}>{ANIMAL_STATUS_LABELS[a.status]}</Badge>
+            {a.withdrawal_until ? <Badge tone="amber">Withdrawal until {formatDate(a.withdrawal_until)}</Badge> : null}
             <button type="button" className="btn" onClick={() => setEditing(true)}>
               <Icon name="pencil" size={15} /> Edit Animal
             </button>
@@ -172,6 +184,84 @@ export function AnimalProfilePage() {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header">
+          <div className="card-title">Health History</div>
+          <button type="button" className="btn btn-sm" onClick={() => setHealthOpen(true)}>
+            <Icon name="plus" size={14} /> Add Health Event
+          </button>
+        </div>
+        {data.recent_health.length === 0 ? (
+          <EmptyState
+            title="No health records"
+            message="Vaccinations, treatments and vet visits for this animal will appear here."
+            action={
+              <button type="button" className="btn" onClick={() => setHealthOpen(true)}>
+                <Icon name="plus" size={15} /> Add Health Event
+              </button>
+            }
+          />
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Condition</th>
+                  <th>Medicine</th>
+                  <th>Withdrawal Until</th>
+                  <th>Next Due</th>
+                  <th className="num">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.recent_health.map((r) => (
+                  <tr key={r.id}>
+                    <td>{formatDate(r.date)}</td>
+                    <td>
+                      <Badge tone={HEALTH_TYPE_TONES[r.type]}>{HEALTH_TYPE_LABELS[r.type]}</Badge>
+                    </td>
+                    <td>{r.condition || <span style={{ color: 'var(--text-3)' }}>—</span>}</td>
+                    <td>
+                      {r.medicine ? (
+                        <span>
+                          {r.medicine}
+                          {r.dosage ? <span style={{ color: 'var(--text-3)' }}> · {r.dosage}</span> : null}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-3)' }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.withdrawal_until ? (
+                        <Badge tone="amber">{formatDate(r.withdrawal_until)}</Badge>
+                      ) : (
+                        <span style={{ color: 'var(--text-3)' }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.next_due_date ? (
+                        <Badge tone="blue">{formatDate(r.next_due_date)}</Badge>
+                      ) : (
+                        <span style={{ color: 'var(--text-3)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="num">
+                      {r.cost != null ? (
+                        <strong>{formatMoney(r.cost, currency)}</strong>
+                      ) : (
+                        <span style={{ color: 'var(--text-3)' }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="grid-2-equal">
         <div className="card">
           <div className="card-header">
@@ -288,6 +378,13 @@ export function AnimalProfilePage() {
       ) : null}
 
       <AnimalForm open={editing} initial={a} onClose={() => setEditing(false)} />
+
+      <HealthForm
+        open={healthOpen}
+        defaultAnimalId={a.id}
+        animals={animals ?? []}
+        onClose={() => setHealthOpen(false)}
+      />
     </>
   );
 }

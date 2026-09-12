@@ -2,6 +2,7 @@ const db = require('../db/connection');
 const { FARM_ID } = require('../config');
 const settingsService = require('./settingsService');
 const financeService = require('./financeService');
+const healthService = require('./healthService');
 const { INCOME_CATEGORIES, EXPENSE_CATEGORIES } = require('../constants/categories');
 const { todayLocal, startOfWeek, lastNDates } = require('../utils/date');
 
@@ -35,6 +36,7 @@ function get() {
     .get(FARM_ID, weekStart, today).total;
 
   const finance = financeService.totals();
+  const health = healthService.summary();
 
   const milk = db
     .prepare(
@@ -112,7 +114,12 @@ function get() {
       revenue_all_time: finance.income,
       expenses_all_time: finance.expenses,
       net_all_time: finance.net,
-      unit: farm.milk_unit
+      unit: farm.milk_unit,
+      health: {
+        withdrawal_count: health.withdrawal_count,
+        due_soon_count: health.due_soon_count,
+        events_this_month: health.events_this_month
+      }
     },
     recent_activity: activity,
     milk_last_7_days: dates.map((date) => ({ date, total: byDate.get(date) || 0 }))

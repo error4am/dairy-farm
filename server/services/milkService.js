@@ -4,6 +4,7 @@ const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
 const { SESSIONS } = require('../constants/enums');
 const settingsService = require('./settingsService');
+const healthService = require('./healthService');
 const { todayLocal, startOfWeek, startOfMonth } = require('../utils/date');
 
 function clampLimit(value, fallback = 25, max = 200) {
@@ -178,6 +179,15 @@ function rules() {
   };
 }
 
+function assertNoWithdrawal(animalId, date) {
+  const until = healthService.activeWithdrawal(animalId, date);
+  if (until) {
+    throw new HttpError(400, `Milk cannot be recorded while this animal is under withdrawal (until ${until}).`, {
+      animal_id: `Under withdrawal until ${until}.`
+    });
+  }
+}
+
 function create(body) {
   const data = validate(body, rules());
   const animal = assertAnimal(data.animal_id);
@@ -186,6 +196,7 @@ function create(body) {
       animal_id: 'This animal is not active.'
     });
   }
+  assertNoWithdrawal(data.animal_id, data.date);
   try {
     const info = db
       .prepare(
@@ -210,6 +221,7 @@ function update(id, body) {
 
   const data = validate(body, rules());
   assertAnimal(data.animal_id);
+  assertNoWithdrawal(data.animal_id, data.date);
   try {
     db.prepare(
       `UPDATE milk_records SET

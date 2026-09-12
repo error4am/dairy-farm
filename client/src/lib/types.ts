@@ -4,6 +4,7 @@ export type AnimalStatus = 'active' | 'sold' | 'deceased';
 export type Session = 'morning' | 'evening';
 export type TxType = 'income' | 'expense';
 export type WeekStart = 'monday' | 'sunday';
+export type HealthType = 'vaccination' | 'treatment' | 'illness' | 'checkup' | 'deworming' | 'other';
 
 export interface Farm {
   id: number;
@@ -31,6 +32,7 @@ export interface Animal {
   updated_at: string;
   total_milk?: number;
   last_milk_date?: string | null;
+  withdrawal_until?: string | null;
 }
 
 export interface MilkRecord {
@@ -63,6 +65,45 @@ export interface Transaction {
   animal_name?: string | null;
 }
 
+export interface HealthRecord {
+  id: number;
+  farm_id: number;
+  animal_id: number;
+  date: string;
+  type: HealthType;
+  condition: string | null;
+  medicine: string | null;
+  dosage: string | null;
+  vet_name: string | null;
+  withdrawal_until: string | null;
+  next_due_date: string | null;
+  notes: string | null;
+  transaction_id: number | null;
+  created_at: string;
+  updated_at: string;
+  animal_tag?: string;
+  animal_name?: string | null;
+  cost?: number | null;
+}
+
+export interface HealthSummary {
+  today: string;
+  events_this_month: number;
+  by_type: { type: HealthType; count: number }[];
+  withdrawals: { animal_id: number; tag_number: string; name: string | null; withdrawal_until: string }[];
+  withdrawal_count: number;
+  due_soon: {
+    id: number;
+    animal_id: number;
+    tag_number: string;
+    name: string | null;
+    type: HealthType;
+    condition: string | null;
+    next_due_date: string;
+  }[];
+  due_soon_count: number;
+}
+
 export interface Category {
   value: string;
   label: string;
@@ -76,6 +117,7 @@ export interface Meta {
     SESSIONS: string[];
     TX_TYPES: string[];
     WEEK_STARTS: string[];
+    HEALTH_TYPES: string[];
   };
   categories: {
     income: Category[];
@@ -104,6 +146,11 @@ export interface Dashboard {
     expenses_all_time: number;
     net_all_time: number;
     unit: string;
+    health: {
+      withdrawal_count: number;
+      due_soon_count: number;
+      events_this_month: number;
+    };
   };
   recent_activity: {
     kind: 'milk' | 'transaction' | 'animal';
@@ -168,4 +215,5 @@ export interface AnimalProfile {
   finance: { income: number; expenses: number; net: number };
   recent_transactions: Transaction[];
   monthly_milk: { month: string; total: number }[];
+  recent_health: HealthRecord[];
 }

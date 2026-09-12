@@ -4,6 +4,7 @@ const ANIMAL_STATUSES = ['active', 'sold', 'deceased'];
 const SESSIONS = ['morning', 'evening'];
 const TX_TYPES = ['income', 'expense'];
 const WEEK_STARTS = ['monday', 'sunday'];
+const HEALTH_TYPES = ['vaccination', 'treatment', 'illness', 'checkup', 'deworming', 'other'];
 
 module.exports = {
   ANIMAL_TYPES,
@@ -11,5 +12,6 @@ module.exports = {
   ANIMAL_STATUSES,
   SESSIONS,
   TX_TYPES,
-  WEEK_STARTS
+  WEEK_STARTS,
+  HEALTH_TYPES
 };

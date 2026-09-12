@@ -4,7 +4,7 @@ import { Field } from '../../components/Field';
 import { api, ApiError } from '../../lib/api';
 import { useData } from '../../lib/DataContext';
 import { useToast } from '../../lib/ToastContext';
-import { todayStr } from '../../lib/format';
+import { todayStr, formatDate } from '../../lib/format';
 import { SESSION_LABELS } from '../../lib/constants';
 import type { Animal, MilkRecord, Session } from '../../lib/types';
 
@@ -49,6 +49,7 @@ export function MilkForm({
   }, [open, initial, defaultUnit]);
 
   const options = animals.filter((a) => a.status === 'active' || a.id === initial?.animal_id);
+  const isWithdrawn = (a: Animal) => Boolean(a.withdrawal_until && a.withdrawal_until >= date);
 
   async function save(keepOpen: boolean) {
     const errs: Record<string, string> = {};
@@ -147,9 +148,10 @@ export function MilkForm({
           >
             <option value="">Select animal…</option>
             {options.map((a) => (
-              <option key={a.id} value={a.id}>
+              <option key={a.id} value={a.id} disabled={isWithdrawn(a) && a.id !== initial?.animal_id}>
                 #{a.tag_number}
                 {a.name ? ` · ${a.name}` : ''}
+                {isWithdrawn(a) ? ` — withdrawal until ${formatDate(a.withdrawal_until)}` : ''}
                 {a.status !== 'active' ? ` (${a.status})` : ''}
               </option>
             ))}
@@ -163,7 +165,19 @@ export function MilkForm({
             className={`input${errors.date ? ' invalid' : ''}`}
             value={date}
             max={todayStr()}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              const newDate = e.target.value;
+              setDate(newDate);
+              const selected = animals.find((a) => String(a.id) === animalId);
+              if (
+                selected &&
+                selected.id !== initial?.animal_id &&
+                selected.withdrawal_until &&
+                selected.withdrawal_until >= newDate
+              ) {
+                setAnimalId('');
+              }
+            }}
           />
         </Field>
 

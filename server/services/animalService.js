@@ -18,7 +18,8 @@ const SORTABLE = {
 const LIST_SELECT = `
   SELECT a.*,
          COALESCE(m.total_milk, 0) AS total_milk,
-         m.last_milk_date
+         m.last_milk_date,
+         w.withdrawal_until
   FROM animals a
   LEFT JOIN (
     SELECT animal_id, SUM(quantity) AS total_milk, MAX(date) AS last_milk_date
@@ -26,6 +27,12 @@ const LIST_SELECT = `
     WHERE farm_id = ?
     GROUP BY animal_id
   ) m ON m.animal_id = a.id
+  LEFT JOIN (
+    SELECT animal_id, MAX(withdrawal_until) AS withdrawal_until
+    FROM health_records
+    WHERE farm_id = ? AND withdrawal_until IS NOT NULL AND withdrawal_until >= ?
+    GROUP BY animal_id
+  ) w ON w.animal_id = a.id
 `;
 
 function list(query = {}) {
@@ -51,11 +58,13 @@ function list(query = {}) {
 
   return db
     .prepare(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${order} ${direction}, a.id DESC`)
-    .all(FARM_ID, ...params);
+    .all(FARM_ID, FARM_ID, todayLocal(), ...params);
 }
 
 function get(id) {
-  const animal = db.prepare(`${LIST_SELECT} WHERE a.id = ? AND a.farm_id = ?`).get(FARM_ID, id, FARM_ID);
+  const animal = db
+    .prepare(`${LIST_SELECT} WHERE a.id = ? AND a.farm_id = ?`)
+    .get(FARM_ID, FARM_ID, todayLocal(), id, FARM_ID);
   if (!animal) throw new HttpError(404, 'Animal not found.');
   return animal;
 }
@@ -138,7 +147,8 @@ function remove(id) {
   get(id);
   const milk = db.prepare('SELECT COUNT(*) AS n FROM milk_records WHERE animal_id = ?').get(id).n;
   const tx = db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE animal_id = ?').get(id).n;
-  if (milk > 0 || tx > 0) {
+  const health = db.prepare('SELECT COUNT(*) AS n FROM health_records WHERE animal_id = ?').get(id).n;
+  if (milk > 0 || tx > 0 || health > 0) {
     throw new HttpError(
       409,
       'This animal has linked records and cannot be deleted. Mark it as Sold or Deceased instead.'
@@ -205,13 +215,24 @@ function profile(id) {
     )
     .all(FARM_ID, id);
 
+  const recentHealth = db
+    .prepare(
+      `SELECT h.*, t.amount AS cost
+       FROM health_records h
+       LEFT JOIN transactions t ON t.id = h.transaction_id
+       WHERE h.farm_id = ? AND h.animal_id = ?
+       ORDER BY h.date DESC, h.id DESC LIMIT 10`
+    )
+    .all(FARM_ID, id);
+
   return {
     animal,
     milk: { ...milk, this_month: thisMonth.total },
     recent_milk: recentMilk,
     finance: { income: finance.income, expenses: finance.expenses, net: finance.income - finance.expenses },
     recent_transactions: recentTransactions,
-    monthly_milk: monthlyMilk
+    monthly_milk: monthlyMilk,
+    recent_health: recentHealth
   };
 }
 

@@ -73,6 +73,12 @@ export function DashboardPage() {
         />
       </div>
 
+      <div className="stat-grid" style={{ marginBottom: 20 }}>
+        <StatCard label="Under Withdrawal" value={m.health.withdrawal_count} />
+        <StatCard label="Vaccinations Due (30 days)" value={m.health.due_soon_count} />
+        <StatCard label="Health Events (Month)" value={m.health.events_this_month} />
+      </div>
+
       <div className="grid-2">
         <div className="card">
           <div className="card-header">

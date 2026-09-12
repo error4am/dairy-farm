@@ -124,6 +124,43 @@ test('dashboard milk cards and milk endpoint agree on today and this week', asyn
   );
 });
 
+test('health API blocks milk during withdrawal and matches the dashboard strip', async () => {
+  const animal = await req('POST', '/animals', { tag_number: 'API-H1', type: 'cow', gender: 'female' });
+  assert.equal(animal.status, 201);
+
+  const health = await req('POST', '/health-records', {
+    animal_id: animal.data.id,
+    date: today,
+    type: 'treatment',
+    condition: 'Mastitis',
+    medicine: 'Amoxicillin',
+    withdrawal_until: addDays(today, 5),
+    cost: 500
+  });
+  assert.equal(health.status, 201, JSON.stringify(health.data));
+  assertClose(health.data.cost, 500, 'linked expense amount');
+
+  const blocked = await req('POST', '/milk-records', {
+    animal_id: animal.data.id,
+    date: today,
+    session: 'morning',
+    quantity: 5,
+    unit: 'L'
+  });
+  assert.equal(blocked.status, 400);
+  assert.match(blocked.data.error, /withdrawal/i);
+
+  const dashboard = await req('GET', '/dashboard');
+  const summary = await req('GET', '/health-records/summary');
+  assert.equal(dashboard.data.metrics.health.withdrawal_count, summary.data.withdrawal_count);
+  assert.equal(dashboard.data.metrics.health.due_soon_count, summary.data.due_soon_count);
+  assert.equal(dashboard.data.metrics.health.events_this_month, summary.data.events_this_month);
+  assert.equal(dashboard.data.metrics.health.withdrawal_count, 1);
+
+  const finance = await req('GET', '/transactions/summary');
+  assertClose(finance.data.all_time.expenses, 250.25 + 120.75 + 75.5 + 500, 'auto expense included in totals');
+});
+
 after(() => {
   if (server) server.close();
   db.close();

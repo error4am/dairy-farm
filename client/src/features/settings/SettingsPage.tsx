@@ -155,11 +155,11 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <div className="detail-label">Version</div>
-                  <div className="detail-value">0.1.0 (Phase 1)</div>
+                  <div className="detail-value">0.1.0 · Phase 2.1 (Health)</div>
                 </div>
                 <div>
                   <div className="detail-label">Modules</div>
-                  <div className="detail-value">Dashboard · Animals · Milk · Finances</div>
+                  <div className="detail-value">Dashboard · Animals · Health · Milk · Finances</div>
                 </div>
               </div>
             </div>

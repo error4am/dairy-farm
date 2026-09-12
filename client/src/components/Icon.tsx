@@ -6,6 +6,7 @@ export type IconName =
   | 'droplet'
   | 'dollar'
   | 'settings'
+  | 'activity'
   | 'plus'
   | 'search'
   | 'x'
@@ -36,6 +37,7 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   droplet: <path d="M12 2.7l5.3 5.3a7.5 7.5 0 1 1-10.6 0L12 2.7z" />,
+  activity: <path d="M22 12h-4l-3 9L9 3l-3 9H2" />,
   dollar: (
     <>
       <path d="M12 2v20" />

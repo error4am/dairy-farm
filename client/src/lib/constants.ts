@@ -1,4 +1,4 @@
-import type { AnimalStatus, AnimalType, Gender, Meta, Session, TxType } from './types';
+import type { AnimalStatus, AnimalType, Gender, HealthType, Meta, Session, TxType } from './types';
 
 export const ANIMAL_TYPE_LABELS: Record<AnimalType, string> = {
   cow: 'Cow',
@@ -33,6 +33,24 @@ export const STATUS_TONES: Record<AnimalStatus, 'green' | 'gray' | 'red'> = {
   deceased: 'red'
 };
 
+export const HEALTH_TYPE_LABELS: Record<HealthType, string> = {
+  vaccination: 'Vaccination',
+  treatment: 'Treatment',
+  illness: 'Illness',
+  checkup: 'Checkup',
+  deworming: 'Deworming',
+  other: 'Other'
+};
+
+export const HEALTH_TYPE_TONES: Record<HealthType, 'green' | 'blue' | 'amber' | 'red' | 'gray'> = {
+  vaccination: 'blue',
+  treatment: 'amber',
+  illness: 'red',
+  checkup: 'green',
+  deworming: 'blue',
+  other: 'gray'
+};
+
 export const FALLBACK_META: Meta = {
   enums: {
     ANIMAL_TYPES: ['cow', 'buffalo', 'other'],
@@ -40,7 +58,8 @@ export const FALLBACK_META: Meta = {
     ANIMAL_STATUSES: ['active', 'sold', 'deceased'],
     SESSIONS: ['morning', 'evening'],
     TX_TYPES: ['income', 'expense'],
-    WEEK_STARTS: ['monday', 'sunday']
+    WEEK_STARTS: ['monday', 'sunday'],
+    HEALTH_TYPES: ['vaccination', 'treatment', 'illness', 'checkup', 'deworming', 'other']
   },
   categories: {
     income: [

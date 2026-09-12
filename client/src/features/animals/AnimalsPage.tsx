@@ -96,7 +96,12 @@ export function AnimalsPage() {
       key: 'status',
       header: 'Status',
       sortKey: 'status',
-      render: (a) => <Badge tone={STATUS_TONES[a.status]}>{ANIMAL_STATUS_LABELS[a.status]}</Badge>
+      render: (a) => (
+        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          <Badge tone={STATUS_TONES[a.status]}>{ANIMAL_STATUS_LABELS[a.status]}</Badge>
+          {a.withdrawal_until ? <Badge tone="amber">Withdrawal</Badge> : null}
+        </span>
+      )
     },
     {
       key: 'total_milk',
