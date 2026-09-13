@@ -36,7 +36,7 @@ async function req(method, path, body) {
 }
 
 test('start server on an ephemeral port', async () => {
-  server = app.listen(0);
+  server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   base = `http://127.0.0.1:${server.address().port}/api`;
 });

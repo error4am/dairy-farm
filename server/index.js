@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { PORT, CLIENT_DIST } = require('./config');
+const { PORT, HOST, CLIENT_DIST } = require('./config');
 const seed = require('./db/seed');
 const { notFound, errorHandler } = require('./middleware/errors');
 
@@ -34,8 +34,8 @@ app.use(notFound);
 app.use(errorHandler);
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Dairy Farm Manager running at http://localhost:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Dairy Farm Manager running at http://${HOST}:${PORT}`);
   });
 }
 
