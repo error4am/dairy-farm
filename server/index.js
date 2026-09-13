@@ -14,6 +14,7 @@ app.use(express.json());
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/animals', require('./routes/animals'));
 app.use('/api/health-records', require('./routes/health'));
+app.use('/api/breeding-records', require('./routes/breeding'));
 app.use('/api/milk-records', require('./routes/milk'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/dashboard', require('./routes/dashboard'));

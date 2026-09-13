@@ -5,6 +5,9 @@ export type Session = 'morning' | 'evening';
 export type TxType = 'income' | 'expense';
 export type WeekStart = 'monday' | 'sunday';
 export type HealthType = 'vaccination' | 'treatment' | 'illness' | 'checkup' | 'deworming' | 'other';
+export type ServiceMethod = 'natural' | 'artificial_insemination' | 'other';
+export type PregnancyResult = 'pending' | 'pregnant' | 'not_pregnant';
+export type CalvingOutcome = 'pending' | 'successful' | 'complication' | 'aborted' | 'other';
 
 export interface Farm {
   id: number;
@@ -12,6 +15,7 @@ export interface Farm {
   currency: string;
   milk_unit: string;
   week_start: WeekStart;
+  gestation_days: number;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +90,39 @@ export interface HealthRecord {
   cost?: number | null;
 }
 
+export interface BreedingRecord {
+  id: number;
+  farm_id: number;
+  animal_id: number;
+  heat_date: string | null;
+  service_date: string | null;
+  service_method: ServiceMethod | null;
+  sire_info: string | null;
+  pregnancy_check_date: string | null;
+  pregnancy_result: PregnancyResult;
+  expected_calving_date: string | null;
+  expected_calving_estimated: number;
+  actual_calving_date: string | null;
+  calving_outcome: CalvingOutcome;
+  offspring_count: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  animal_tag?: string;
+  animal_name?: string | null;
+}
+
+export interface BreedingSummary {
+  today: string;
+  currently_pregnant_count: number;
+  calving_soon_count: number;
+  pending_checks_count: number;
+  events_this_month: number;
+  currently_pregnant: BreedingRecord[];
+  calving_soon: BreedingRecord[];
+  pending_checks: BreedingRecord[];
+}
+
 export interface HealthSummary {
   today: string;
   events_this_month: number;
@@ -118,6 +155,9 @@ export interface Meta {
     TX_TYPES: string[];
     WEEK_STARTS: string[];
     HEALTH_TYPES: string[];
+    SERVICE_METHODS: string[];
+    PREGNANCY_RESULTS: string[];
+    CALVING_OUTCOMES: string[];
   };
   categories: {
     income: Category[];
@@ -150,6 +190,11 @@ export interface Dashboard {
       withdrawal_count: number;
       due_soon_count: number;
       events_this_month: number;
+    };
+    breeding: {
+      currently_pregnant: number;
+      calving_soon: number;
+      pending_checks: number;
     };
   };
   recent_activity: {
@@ -216,4 +261,8 @@ export interface AnimalProfile {
   recent_transactions: Transaction[];
   monthly_milk: { month: string; total: number }[];
   recent_health: HealthRecord[];
+  breeding: {
+    current: BreedingRecord | null;
+    recent: BreedingRecord[];
+  };
 }

@@ -18,6 +18,7 @@ export function SettingsPage() {
   const [currency, setCurrency] = useState(meta.farm.currency);
   const [milkUnit, setMilkUnit] = useState(meta.farm.milk_unit);
   const [weekStart, setWeekStart] = useState<WeekStart>(meta.farm.week_start);
+  const [gestationDays, setGestationDays] = useState(String(meta.farm.gestation_days));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
@@ -26,12 +27,17 @@ export function SettingsPage() {
     setCurrency(meta.farm.currency);
     setMilkUnit(meta.farm.milk_unit);
     setWeekStart(meta.farm.week_start);
-  }, [meta.farm.name, meta.farm.currency, meta.farm.milk_unit, meta.farm.week_start]);
+    setGestationDays(String(meta.farm.gestation_days));
+  }, [meta.farm.name, meta.farm.currency, meta.farm.milk_unit, meta.farm.week_start, meta.farm.gestation_days]);
 
   async function save() {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = 'Farm name is required.';
     if (!currency.trim()) errs.currency = 'Currency is required.';
+    const gestation = Number(gestationDays);
+    if (!Number.isInteger(gestation) || gestation < 150 || gestation > 400) {
+      errs.gestation_days = 'Gestation length must be between 150 and 400 days.';
+    }
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
@@ -43,7 +49,8 @@ export function SettingsPage() {
         name: name.trim(),
         currency: currency.trim().toUpperCase(),
         milk_unit: milkUnit,
-        week_start: weekStart
+        week_start: weekStart,
+        gestation_days: gestation
       });
       toast.success('Settings saved.');
       refresh();
@@ -118,6 +125,25 @@ export function SettingsPage() {
                 </select>
               </Field>
 
+              <Field
+                label="Gestation length (days)"
+                required
+                error={errors.gestation_days}
+                hint="Used to estimate calving dates (cattle ≈ 283)"
+                htmlFor="set-gestation"
+              >
+                <input
+                  id="set-gestation"
+                  type="number"
+                  min="150"
+                  max="400"
+                  step="1"
+                  className={`input${errors.gestation_days ? ' invalid' : ''}`}
+                  value={gestationDays}
+                  onChange={(e) => setGestationDays(e.target.value)}
+                />
+              </Field>
+
               <div className="span-2" style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>
                   {busy ? 'Saving…' : 'Save Settings'}
@@ -155,11 +181,11 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <div className="detail-label">Version</div>
-                  <div className="detail-value">0.1.0 · Phase 2.1 (Health)</div>
+                  <div className="detail-value">0.1.0 · Phase 2.2 (Health · Breeding)</div>
                 </div>
                 <div>
                   <div className="detail-label">Modules</div>
-                  <div className="detail-value">Dashboard · Animals · Health · Milk · Finances</div>
+                  <div className="detail-value">Dashboard · Animals · Health · Breeding · Milk · Finances</div>
                 </div>
               </div>
             </div>

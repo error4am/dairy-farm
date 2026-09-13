@@ -183,12 +183,12 @@ test('dashboard week total respects the farm week start, matches the milk page a
   assertClose(milkService.summary({}).week, expectedMonday, 'milk page week matches dashboard');
 
   try {
-    settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'sunday' });
+    settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'sunday', gestation_days: 283 });
     const expectedSunday = sum(milkFixtures.filter((m) => inRange(m.date, sundayWeek, today)), 'quantity');
     assertClose(dashboardService.get().metrics.milk_week, expectedSunday, 'sunday week total');
     assertClose(milkService.summary({}).week, expectedSunday, 'milk page sunday week matches dashboard');
   } finally {
-    settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'monday' });
+    settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'monday', gestation_days: 283 });
   }
 
   const futureRecords = milkFixtures.filter((m) => m.date > today);

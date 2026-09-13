@@ -3,6 +3,7 @@ const { FARM_ID } = require('../config');
 const settingsService = require('./settingsService');
 const financeService = require('./financeService');
 const healthService = require('./healthService');
+const breedingService = require('./breedingService');
 const { INCOME_CATEGORIES, EXPENSE_CATEGORIES } = require('../constants/categories');
 const { todayLocal, startOfWeek, lastNDates } = require('../utils/date');
 
@@ -37,6 +38,7 @@ function get() {
 
   const finance = financeService.totals();
   const health = healthService.summary();
+  const breeding = breedingService.summary();
 
   const milk = db
     .prepare(
@@ -119,6 +121,11 @@ function get() {
         withdrawal_count: health.withdrawal_count,
         due_soon_count: health.due_soon_count,
         events_this_month: health.events_this_month
+      },
+      breeding: {
+        currently_pregnant: breeding.currently_pregnant_count,
+        calving_soon: breeding.calving_soon_count,
+        pending_checks: breeding.pending_checks_count
       }
     },
     recent_activity: activity,

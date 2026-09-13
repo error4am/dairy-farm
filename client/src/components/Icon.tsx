@@ -7,6 +7,7 @@ export type IconName =
   | 'dollar'
   | 'settings'
   | 'activity'
+  | 'repeat'
   | 'plus'
   | 'search'
   | 'x'
@@ -38,6 +39,14 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   droplet: <path d="M12 2.7l5.3 5.3a7.5 7.5 0 1 1-10.6 0L12 2.7z" />,
   activity: <path d="M22 12h-4l-3 9L9 3l-3 9H2" />,
+  repeat: (
+    <>
+      <path d="M17 1l4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="M7 23l-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </>
+  ),
   dollar: (
     <>
       <path d="M12 2v20" />

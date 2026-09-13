@@ -4,6 +4,7 @@ const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
 const { ANIMAL_TYPES, GENDERS, ANIMAL_STATUSES } = require('../constants/enums');
 const { todayLocal } = require('../utils/date');
+const breedingService = require('./breedingService');
 
 const SORTABLE = {
   tag_number: 'a.tag_number',
@@ -148,7 +149,8 @@ function remove(id) {
   const milk = db.prepare('SELECT COUNT(*) AS n FROM milk_records WHERE animal_id = ?').get(id).n;
   const tx = db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE animal_id = ?').get(id).n;
   const health = db.prepare('SELECT COUNT(*) AS n FROM health_records WHERE animal_id = ?').get(id).n;
-  if (milk > 0 || tx > 0 || health > 0) {
+  const breeding = db.prepare('SELECT COUNT(*) AS n FROM breeding_records WHERE animal_id = ?').get(id).n;
+  if (milk > 0 || tx > 0 || health > 0 || breeding > 0) {
     throw new HttpError(
       409,
       'This animal has linked records and cannot be deleted. Mark it as Sold or Deceased instead.'
@@ -225,6 +227,14 @@ function profile(id) {
     )
     .all(FARM_ID, id);
 
+  const recentBreeding = db
+    .prepare(
+      `SELECT * FROM breeding_records
+       WHERE farm_id = ? AND animal_id = ?
+       ORDER BY COALESCE(service_date, heat_date, date(created_at)) DESC, id DESC LIMIT 10`
+    )
+    .all(FARM_ID, id);
+
   return {
     animal,
     milk: { ...milk, this_month: thisMonth.total },
@@ -232,7 +242,11 @@ function profile(id) {
     finance: { income: finance.income, expenses: finance.expenses, net: finance.income - finance.expenses },
     recent_transactions: recentTransactions,
     monthly_milk: monthlyMilk,
-    recent_health: recentHealth
+    recent_health: recentHealth,
+    breeding: {
+      current: breedingService.currentForAnimal(id),
+      recent: recentBreeding
+    }
   };
 }
 

@@ -77,6 +77,9 @@ export function DashboardPage() {
         <StatCard label="Under Withdrawal" value={m.health.withdrawal_count} />
         <StatCard label="Vaccinations Due (30 days)" value={m.health.due_soon_count} />
         <StatCard label="Health Events (Month)" value={m.health.events_this_month} />
+        <StatCard label="Pregnant" value={m.breeding.currently_pregnant} />
+        <StatCard label="Calving Soon (30 days)" value={m.breeding.calving_soon} />
+        <StatCard label="Pending Checks" value={m.breeding.pending_checks} />
       </div>
 
       <div className="grid-2">

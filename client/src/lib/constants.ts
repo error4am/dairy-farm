@@ -1,4 +1,15 @@
-import type { AnimalStatus, AnimalType, Gender, HealthType, Meta, Session, TxType } from './types';
+import type {
+  AnimalStatus,
+  AnimalType,
+  CalvingOutcome,
+  Gender,
+  HealthType,
+  Meta,
+  PregnancyResult,
+  ServiceMethod,
+  Session,
+  TxType
+} from './types';
 
 export const ANIMAL_TYPE_LABELS: Record<AnimalType, string> = {
   cow: 'Cow',
@@ -51,6 +62,40 @@ export const HEALTH_TYPE_TONES: Record<HealthType, 'green' | 'blue' | 'amber' | 
   other: 'gray'
 };
 
+export const SERVICE_METHOD_LABELS: Record<ServiceMethod, string> = {
+  natural: 'Natural',
+  artificial_insemination: 'Artificial Insemination',
+  other: 'Other'
+};
+
+export const PREGNANCY_RESULT_LABELS: Record<PregnancyResult, string> = {
+  pending: 'Pending',
+  pregnant: 'Pregnant',
+  not_pregnant: 'Not Pregnant'
+};
+
+export const PREGNANCY_RESULT_TONES: Record<PregnancyResult, 'green' | 'amber' | 'gray'> = {
+  pending: 'amber',
+  pregnant: 'green',
+  not_pregnant: 'gray'
+};
+
+export const CALVING_OUTCOME_LABELS: Record<CalvingOutcome, string> = {
+  pending: 'Pending',
+  successful: 'Successful',
+  complication: 'Complication',
+  aborted: 'Aborted',
+  other: 'Other'
+};
+
+export const CALVING_OUTCOME_TONES: Record<CalvingOutcome, 'green' | 'amber' | 'red' | 'gray'> = {
+  pending: 'gray',
+  successful: 'green',
+  complication: 'amber',
+  aborted: 'red',
+  other: 'gray'
+};
+
 export const FALLBACK_META: Meta = {
   enums: {
     ANIMAL_TYPES: ['cow', 'buffalo', 'other'],
@@ -59,7 +104,10 @@ export const FALLBACK_META: Meta = {
     SESSIONS: ['morning', 'evening'],
     TX_TYPES: ['income', 'expense'],
     WEEK_STARTS: ['monday', 'sunday'],
-    HEALTH_TYPES: ['vaccination', 'treatment', 'illness', 'checkup', 'deworming', 'other']
+    HEALTH_TYPES: ['vaccination', 'treatment', 'illness', 'checkup', 'deworming', 'other'],
+    SERVICE_METHODS: ['natural', 'artificial_insemination', 'other'],
+    PREGNANCY_RESULTS: ['pending', 'pregnant', 'not_pregnant'],
+    CALVING_OUTCOMES: ['pending', 'successful', 'complication', 'aborted', 'other']
   },
   categories: {
     income: [
@@ -83,6 +131,7 @@ export const FALLBACK_META: Meta = {
     currency: 'PKR',
     milk_unit: 'L',
     week_start: 'monday',
+    gestation_days: 283,
     created_at: '',
     updated_at: ''
   }

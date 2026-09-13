@@ -7,14 +7,20 @@ import { Icon } from '../../components/Icon';
 import { EmptyState } from '../../components/EmptyState';
 import { AnimalForm } from './AnimalForm';
 import { HealthForm } from '../health/HealthForm';
+import { BreedingForm } from '../breeding/BreedingForm';
 import { useApi } from '../../lib/useApi';
 import { useMeta } from '../../lib/MetaContext';
 import {
   ANIMAL_STATUS_LABELS,
   ANIMAL_TYPE_LABELS,
+  CALVING_OUTCOME_LABELS,
+  CALVING_OUTCOME_TONES,
   GENDER_LABELS,
   HEALTH_TYPE_LABELS,
   HEALTH_TYPE_TONES,
+  PREGNANCY_RESULT_LABELS,
+  PREGNANCY_RESULT_TONES,
+  SERVICE_METHOD_LABELS,
   SESSION_LABELS,
   STATUS_TONES
 } from '../../lib/constants';
@@ -26,6 +32,7 @@ export function AnimalProfilePage() {
   const meta = useMeta();
   const [editing, setEditing] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [breedingOpen, setBreedingOpen] = useState(false);
   const { data, loading, error } = useApi<AnimalProfile>(id ? `/animals/${id}/profile` : null);
   const { data: animals } = useApi<Animal[]>('/animals?sort=tag_number&dir=asc');
 
@@ -262,6 +269,117 @@ export function AnimalProfilePage() {
         )}
       </div>
 
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header">
+          <div className="card-title">Breeding History</div>
+          <button type="button" className="btn btn-sm" onClick={() => setBreedingOpen(true)}>
+            <Icon name="plus" size={14} /> Add Breeding Record
+          </button>
+        </div>
+        {data.breeding.recent.length === 0 ? (
+          <EmptyState
+            title="No breeding records"
+            message="Heat, service and pregnancy records for this animal will appear here."
+            action={
+              <button type="button" className="btn" onClick={() => setBreedingOpen(true)}>
+                <Icon name="plus" size={15} /> Add Breeding Record
+              </button>
+            }
+          />
+        ) : (
+          <>
+            <div className="card-body" style={{ paddingBottom: 14 }}>
+              <div className="detail-grid">
+                <div>
+                  <div className="detail-label">Reproductive Status</div>
+                  <div className="detail-value">
+                    {data.breeding.current ? (
+                      <Badge tone="green">Pregnant</Badge>
+                    ) : data.breeding.recent[0].actual_calving_date ? (
+                      <Badge tone="gray">Calved · not pregnant</Badge>
+                    ) : data.breeding.recent[0].pregnancy_result === 'pending' ? (
+                      <Badge tone="amber">Awaiting pregnancy check</Badge>
+                    ) : (
+                      <Badge tone="gray">Not pregnant</Badge>
+                    )}
+                  </div>
+                </div>
+                {data.breeding.current ? (
+                  <>
+                    <div>
+                      <div className="detail-label">Expected Calving</div>
+                      <div className="detail-value">
+                        {formatDate(data.breeding.current.expected_calving_date)}
+                        {data.breeding.current.expected_calving_estimated === 1 ? (
+                          <span style={{ color: 'var(--text-3)' }}> (estimated)</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="detail-label">Sire / Bull</div>
+                      <div className="detail-value">{data.breeding.current.sire_info || '—'}</div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Heat</th>
+                    <th>Service</th>
+                    <th>Method</th>
+                    <th>Pregnancy</th>
+                    <th>Expected</th>
+                    <th>Actual</th>
+                    <th>Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.breeding.recent.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.heat_date ? formatDate(r.heat_date) : <span style={{ color: 'var(--text-3)' }}>—</span>}</td>
+                      <td>{r.service_date ? formatDate(r.service_date) : <span style={{ color: 'var(--text-3)' }}>—</span>}</td>
+                      <td>
+                        {r.service_method ? (
+                          SERVICE_METHOD_LABELS[r.service_method]
+                        ) : (
+                          <span style={{ color: 'var(--text-3)' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        <Badge tone={PREGNANCY_RESULT_TONES[r.pregnancy_result]}>
+                          {PREGNANCY_RESULT_LABELS[r.pregnancy_result]}
+                        </Badge>
+                      </td>
+                      <td>
+                        {r.expected_calving_date ? (
+                          <span>
+                            {formatDate(r.expected_calving_date)}
+                            {r.expected_calving_estimated === 1 ? (
+                              <span style={{ color: 'var(--text-3)', fontSize: 11.5 }}> est.</span>
+                            ) : null}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-3)' }}>—</span>
+                        )}
+                      </td>
+                      <td>{r.actual_calving_date ? formatDate(r.actual_calving_date) : <span style={{ color: 'var(--text-3)' }}>—</span>}</td>
+                      <td>
+                        <Badge tone={CALVING_OUTCOME_TONES[r.calving_outcome]}>
+                          {CALVING_OUTCOME_LABELS[r.calving_outcome]}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="grid-2-equal">
         <div className="card">
           <div className="card-header">
@@ -384,6 +502,13 @@ export function AnimalProfilePage() {
         defaultAnimalId={a.id}
         animals={animals ?? []}
         onClose={() => setHealthOpen(false)}
+      />
+
+      <BreedingForm
+        open={breedingOpen}
+        defaultAnimalId={a.id}
+        animals={animals ?? []}
+        onClose={() => setBreedingOpen(false)}
       />
     </>
   );

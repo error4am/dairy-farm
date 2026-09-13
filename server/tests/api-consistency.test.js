@@ -161,6 +161,32 @@ test('health API blocks milk during withdrawal and matches the dashboard strip',
   assertClose(finance.data.all_time.expenses, 250.25 + 120.75 + 75.5 + 500, 'auto expense included in totals');
 });
 
+test('breeding API records a pregnancy and matches the dashboard strip', async () => {
+  const animal = await req('POST', '/animals', { tag_number: 'API-B1', type: 'cow', gender: 'female' });
+  assert.equal(animal.status, 201);
+
+  const record = await req('POST', '/breeding-records', {
+    animal_id: animal.data.id,
+    heat_date: addDays(today, -20),
+    service_date: addDays(today, -18),
+    service_method: 'artificial_insemination',
+    pregnancy_check_date: addDays(today, -2),
+    pregnancy_result: 'pregnant',
+    expected_calving_date: addDays(today, 265),
+    expected_calving_estimated: true
+  });
+  assert.equal(record.status, 201, JSON.stringify(record.data));
+  assert.equal(record.data.expected_calving_estimated, 1);
+
+  const dashboard = await req('GET', '/dashboard');
+  const summary = await req('GET', '/breeding-records/summary');
+  assert.equal(dashboard.data.metrics.breeding.currently_pregnant, summary.data.currently_pregnant_count);
+  assert.equal(dashboard.data.metrics.breeding.calving_soon, summary.data.calving_soon_count);
+  assert.equal(dashboard.data.metrics.breeding.pending_checks, summary.data.pending_checks_count);
+  assert.equal(dashboard.data.metrics.breeding.currently_pregnant, 1);
+  assert.equal(summary.data.currently_pregnant[0].animal_tag, 'API-B1');
+});
+
 after(() => {
   if (server) server.close();
   db.close();
