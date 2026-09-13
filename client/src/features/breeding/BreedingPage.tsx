@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { StatCard } from '../../components/StatCard';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -42,10 +42,11 @@ export function BreedingPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [animalId, setAnimalId] = useState('');
-  const [result, setResult] = useState('');
+  const [searchParams] = useSearchParams();
+  const [result, setResult] = useState(() => (searchParams.get('filter') === 'pregnant' ? 'pregnant' : ''));
   const [method, setMethod] = useState('');
-  const [dueSoon, setDueSoon] = useState(false);
-  const [pendingChecks, setPendingChecks] = useState(false);
+  const [dueSoon, setDueSoon] = useState(() => searchParams.get('filter') === 'calving');
+  const [pendingChecks, setPendingChecks] = useState(() => searchParams.get('filter') === 'pending');
   const [offset, setOffset] = useState(0);
 
   const [form, setForm] = useState<{ open: boolean; record: BreedingRecord | null }>({ open: false, record: null });

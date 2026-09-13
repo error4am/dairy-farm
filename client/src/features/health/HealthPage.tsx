@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { StatCard } from '../../components/StatCard';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -33,8 +33,9 @@ export function HealthPage() {
   const [type, setType] = useState('');
   const [animalId, setAnimalId] = useState('');
   const [search, setSearch] = useState('');
-  const [dueSoon, setDueSoon] = useState(false);
-  const [withdrawalActive, setWithdrawalActive] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [dueSoon, setDueSoon] = useState(() => searchParams.get('filter') === 'due');
+  const [withdrawalActive, setWithdrawalActive] = useState(() => searchParams.get('filter') === 'withdrawal');
   const [offset, setOffset] = useState(0);
 
   const [form, setForm] = useState<{ open: boolean; record: HealthRecord | null }>({ open: false, record: null });

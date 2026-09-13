@@ -40,7 +40,7 @@ export function DashboardPage() {
     <>
       <PageHeader title="Dashboard" subtitle={`Overview for ${data.farm.name}`} />
 
-      <div className="quick-actions" style={{ marginBottom: 20 }}>
+      <div className="quick-actions" style={{ marginBottom: 16 }}>
         <button type="button" className="quick-action" onClick={() => setQuick('animal')}>
           <Icon name="tag" size={17} /> Add Animal
         </button>
@@ -55,7 +55,7 @@ export function DashboardPage() {
         </button>
       </div>
 
-      <div className="stat-grid" style={{ marginBottom: 20 }}>
+      <div className="dashboard-primary">
         <StatCard label="Active Animals" value={m.active_animals} />
         <StatCard
           label="Milk Today"
@@ -73,17 +73,14 @@ export function DashboardPage() {
         />
       </div>
 
-      <div
-        className="stat-grid"
-        style={{ marginBottom: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
-      >
-        <StatCard label="Under Withdrawal" value={m.health.withdrawal_count} />
-        <StatCard label="Vaccinations Due (30 days)" value={m.health.due_soon_count} />
+      <div className="dashboard-secondary">
+        <StatCard label="Under Withdrawal" value={m.health.withdrawal_count} to="/health?filter=withdrawal" />
+        <StatCard label="Vaccinations Due (30 days)" value={m.health.due_soon_count} to="/health?filter=due" />
         <StatCard label="Health Events (Month)" value={m.health.events_this_month} />
-        <StatCard label="Pregnant" value={m.breeding.currently_pregnant} />
-        <StatCard label="Calving Soon (30 days)" value={m.breeding.calving_soon} />
-        <StatCard label="Pending Checks" value={m.breeding.pending_checks} />
-        <StatCard label="Active Employees" value={m.employees.active_count} />
+        <StatCard label="Pregnant" value={m.breeding.currently_pregnant} to="/breeding?filter=pregnant" />
+        <StatCard label="Calving Soon (30 days)" value={m.breeding.calving_soon} to="/breeding?filter=calving" />
+        <StatCard label="Pending Checks" value={m.breeding.pending_checks} to="/breeding?filter=pending" />
+        <StatCard label="Active Employees" value={m.employees.active_count} to="/employees" />
         <StatCard label="Labor Cost (Month)" value={formatMoney(m.employees.labor_cost_this_month, currency)} />
       </div>
 

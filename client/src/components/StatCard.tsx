@@ -1,17 +1,20 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 export function StatCard({
   label,
   value,
   hint,
   tone,
-  onClick
+  onClick,
+  to
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
   tone?: 'positive' | 'negative';
   onClick?: () => void;
+  to?: string;
 }) {
   const content = (
     <>
@@ -20,6 +23,14 @@ export function StatCard({
       {hint ? <div className="stat-hint">{hint}</div> : null}
     </>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="stat stat-clickable">
+        {content}
+      </Link>
+    );
+  }
 
   if (onClick) {
     return (
