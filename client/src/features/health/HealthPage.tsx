@@ -34,6 +34,7 @@ export function HealthPage() {
   const [animalId, setAnimalId] = useState('');
   const [search, setSearch] = useState('');
   const [dueSoon, setDueSoon] = useState(false);
+  const [withdrawalActive, setWithdrawalActive] = useState(false);
   const [offset, setOffset] = useState(0);
 
   const [form, setForm] = useState<{ open: boolean; record: HealthRecord | null }>({ open: false, record: null });
@@ -50,17 +51,18 @@ export function HealthPage() {
     if (animalId) q.set('animal_id', animalId);
     if (search) q.set('search', search);
     if (dueSoon) q.set('due', 'soon');
+    if (withdrawalActive) q.set('withdrawal', 'active');
     q.set('limit', String(LIMIT));
     q.set('offset', String(offset));
     return `/health-records?${q.toString()}`;
-  }, [from, to, type, animalId, search, dueSoon, offset]);
+  }, [from, to, type, animalId, search, dueSoon, withdrawalActive, offset]);
 
   const { data, loading, error } = useApi<Paged<HealthRecord>>(listPath);
   const { data: summary } = useApi<HealthSummary>('/health-records/summary');
 
   useEffect(() => {
     setOffset(0);
-  }, [from, to, type, animalId, search, dueSoon]);
+  }, [from, to, type, animalId, search, dueSoon, withdrawalActive]);
 
   function applyPreset(p: Exclude<Preset, 'custom'>) {
     setPreset(p);
@@ -205,6 +207,10 @@ export function HealthPage() {
           label="Due Soon (30 days)"
           value={summary ? summary.due_soon_count : '—'}
           hint={summary && summary.due_soon[0] ? `Next: #${summary.due_soon[0].tag_number} on ${formatDate(summary.due_soon[0].next_due_date)}` : undefined}
+          onClick={() => {
+            setDueSoon(true);
+            setWithdrawalActive(false);
+          }}
         />
         <StatCard
           label="Under Withdrawal"
@@ -214,6 +220,10 @@ export function HealthPage() {
               ? `#${summary.withdrawals[0].tag_number} until ${formatDate(summary.withdrawals[0].withdrawal_until)}`
               : 'No milk restrictions'
           }
+          onClick={() => {
+            setWithdrawalActive(true);
+            setDueSoon(false);
+          }}
         />
       </div>
 
@@ -272,10 +282,24 @@ export function HealthPage() {
         <button
           type="button"
           className={`btn${dueSoon ? ' btn-primary' : ''}`}
-          onClick={() => setDueSoon((v) => !v)}
+          onClick={() => {
+            setDueSoon((v) => !v);
+            setWithdrawalActive(false);
+          }}
           title="Show records with a due date in the next 30 days"
         >
           Due Soon
+        </button>
+        <button
+          type="button"
+          className={`btn${withdrawalActive ? ' btn-primary' : ''}`}
+          onClick={() => {
+            setWithdrawalActive((v) => !v);
+            setDueSoon(false);
+          }}
+          title="Show animals whose milk is still under withdrawal"
+        >
+          Withdrawal
         </button>
       </div>
 
@@ -292,7 +316,12 @@ export function HealthPage() {
               rowKey={(r) => r.id}
               loading={loading}
               empty={
-                from || to || type || animalId || search || dueSoon ? (
+                withdrawalActive ? (
+                  <EmptyState
+                    title="No active withdrawals"
+                    message="No animals are under withdrawal right now. Milk recording is unrestricted."
+                  />
+                ) : from || to || type || animalId || search || dueSoon ? (
                   <EmptyState title="No matching health records" message="Try changing the filters or date range." />
                 ) : (
                   <EmptyState

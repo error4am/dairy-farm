@@ -54,6 +54,10 @@ function list(query = {}) {
     where.push('h.next_due_date IS NOT NULL AND h.next_due_date <= ?');
     params.push(addDays(todayLocal(), 30));
   }
+  if (query.withdrawal === 'active') {
+    where.push('h.withdrawal_until IS NOT NULL AND h.withdrawal_until >= ?');
+    params.push(todayLocal());
+  }
   if (query.search) {
     where.push('(h.condition LIKE ? OR h.medicine LIKE ? OR h.vet_name LIKE ? OR a.tag_number LIKE ? OR a.name LIKE ?)');
     const s = '%' + query.search + '%';
@@ -67,7 +71,12 @@ function list(query = {}) {
 
   const limit = clampLimit(query.limit);
   const offset = Math.max(0, Number(query.offset) || 0);
-  const order = query.due === 'soon' ? 'h.next_due_date ASC, h.date DESC' : 'h.date DESC, h.id DESC';
+  const order =
+    query.due === 'soon'
+      ? 'h.next_due_date ASC, h.date DESC'
+      : query.withdrawal === 'active'
+        ? 'h.withdrawal_until ASC, h.date DESC'
+        : 'h.date DESC, h.id DESC';
 
   const items = db
     .prepare(`${LIST_SELECT} WHERE ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`)

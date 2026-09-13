@@ -4,18 +4,30 @@ export function StatCard({
   label,
   value,
   hint,
-  tone
+  tone,
+  onClick
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
   tone?: 'positive' | 'negative';
+  onClick?: () => void;
 }) {
-  return (
-    <div className="stat">
+  const content = (
+    <>
       <div className="stat-label">{label}</div>
       <div className={`stat-value${tone ? ' ' + tone : ''}`}>{value}</div>
       {hint ? <div className="stat-hint">{hint}</div> : null}
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" className="stat stat-clickable" onClick={onClick}>
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="stat">{content}</div>;
 }

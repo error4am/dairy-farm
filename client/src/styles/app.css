@@ -206,6 +206,19 @@
   box-shadow: var(--shadow-sm);
 }
 
+.stat-clickable {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+
+.stat-clickable:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 2px 8px rgba(22, 32, 26, 0.08);
+}
+
 .stat-label {
   font-size: 11.5px;
   color: var(--text-3);

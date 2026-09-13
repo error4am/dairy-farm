@@ -269,6 +269,28 @@ test('withdrawal date cannot be before the record date', () => {
   );
 });
 
+test('withdrawal filter returns only active or upcoming withdrawals, soonest first', () => {
+  healthService.create({
+    animal_id: animalB.id,
+    date: addDays(today, -10),
+    type: 'treatment',
+    condition: 'Old treatment',
+    withdrawal_until: addDays(today, -5)
+  });
+
+  const active = healthService.list({ withdrawal: 'active' });
+
+  assert.equal(active.total, 2, 'only the two active withdrawals are listed');
+  assert.deepEqual(
+    active.items.map((r) => r.animal_tag),
+    ['H-3', 'H-1'],
+    'sorted by withdrawal date, soonest first'
+  );
+  for (const record of active.items) {
+    assert.ok(record.withdrawal_until >= today, 'expired withdrawals are excluded');
+  }
+});
+
 after(() => {
   db.close();
   for (const suffix of ['', '-wal', '-shm']) {
