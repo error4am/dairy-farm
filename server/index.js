@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const { PORT, HOST, CLIENT_DIST } = require('./config');
 const seed = require('./db/seed');
+const backup = require('./db/backup');
 const { notFound, errorHandler } = require('./middleware/errors');
 
 seed();
@@ -34,6 +35,20 @@ app.use(notFound);
 app.use(errorHandler);
 
 if (require.main === module) {
+  try {
+    const result = backup.runAutomaticBackup();
+    if (result.skipped) {
+      console.log(`Automatic backup: already created today (${result.path})`);
+    } else {
+      console.log(`Automatic backup created: ${result.path}`);
+      if (result.removed.length > 0) {
+        console.log(`Removed ${result.removed.length} old automatic backup(s).`);
+      }
+    }
+  } catch (err) {
+    console.error(`Automatic backup failed: ${err.message}`);
+  }
+
   app.listen(PORT, HOST, () => {
     console.log(`Dairy Farm Manager running at http://${HOST}:${PORT}`);
   });

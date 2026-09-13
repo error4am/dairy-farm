@@ -35,14 +35,16 @@ async function waitForHealth(port, timeoutMs = 10000) {
 
 let child = null;
 let dbPath = null;
+let backupDir = null;
 
 test('production server binds to 127.0.0.1 only, not all interfaces', async () => {
   const port = await freePort();
   dbPath = path.join(os.tmpdir(), `dairy-bind-test-${process.pid}-${Date.now()}.db`);
+  backupDir = path.join(os.tmpdir(), `dairy-bind-backups-${process.pid}-${Date.now()}`);
 
   child = spawn(process.execPath, ['index.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(port), DB_PATH: dbPath, HOST: '' },
+    env: { ...process.env, PORT: String(port), DB_PATH: dbPath, BACKUP_DIR: backupDir, HOST: '' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
@@ -88,5 +90,8 @@ after(async () => {
     for (const suffix of ['', '-wal', '-shm']) {
       fs.rmSync(dbPath + suffix, { force: true });
     }
+  }
+  if (backupDir) {
+    fs.rmSync(backupDir, { recursive: true, force: true });
   }
 });

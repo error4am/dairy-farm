@@ -21,6 +21,37 @@ export function SettingsPage() {
   const [gestationDays, setGestationDays] = useState(String(meta.farm.gestation_days));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+
+  async function downloadBackup() {
+    setBackingUp(true);
+    try {
+      const res = await fetch('/api/settings/backup');
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error((body as { error?: string } | null)?.error || 'Backup failed.');
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') || '';
+      const match = /filename="?([^";]+)"?/.exec(disposition);
+      const filename = match ? match[1] : 'dairy-backup.db';
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success('Backup downloaded and verified.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Backup failed.');
+    } finally {
+      setBackingUp(false);
+    }
+  }
 
   useEffect(() => {
     setName(meta.farm.name);
@@ -160,12 +191,12 @@ export function SettingsPage() {
             </div>
             <div className="card-body">
               <p style={{ color: 'var(--text-2)', marginBottom: 14 }}>
-                Download a copy of the farm database. Keep it somewhere safe — you can restore by replacing the database
-                file with this backup.
+                A backup is created automatically once a day and kept on this computer. Download a copy of the farm
+                database to keep somewhere safe — you can restore it by replacing the database file with this backup.
               </p>
-              <a className="btn" href="/api/settings/backup">
-                <Icon name="download" size={15} /> Download Backup
-              </a>
+              <button type="button" className="btn" onClick={downloadBackup} disabled={backingUp}>
+                <Icon name="download" size={15} /> {backingUp ? 'Creating backup…' : 'Download Backup'}
+              </button>
             </div>
           </div>
 
