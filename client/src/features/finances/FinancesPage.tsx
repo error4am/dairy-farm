@@ -304,8 +304,8 @@ export function FinancesPage() {
         </select>
         <input
           type="search"
-          className="input search"
-          placeholder="Search description, animal, employee…"
+          className="input search grow"
+          placeholder="Search transactions…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
