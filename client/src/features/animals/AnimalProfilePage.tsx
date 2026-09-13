@@ -25,6 +25,7 @@ import {
   STATUS_TONES
 } from '../../lib/constants';
 import { formatAge, formatDate, formatMoney, formatQuantity } from '../../lib/format';
+import { pluralize } from '../../lib/plural.js';
 import type { Animal, AnimalProfile } from '../../lib/types';
 
 export function AnimalProfilePage() {
@@ -56,6 +57,7 @@ export function AnimalProfilePage() {
   const a = data.animal;
   const currency = meta.farm.currency;
   const unit = meta.farm.milk_unit;
+  const currentMonthLabel = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(new Date());
 
   return (
     <>
@@ -80,8 +82,12 @@ export function AnimalProfilePage() {
       />
 
       <div className="stat-grid" style={{ marginBottom: 20 }}>
-        <StatCard label="Total Milk" value={formatQuantity(data.milk.total, unit)} hint={`${data.milk.records} records`} />
-        <StatCard label="This Month" value={formatQuantity(data.milk.this_month, unit)} />
+        <StatCard
+          label="Total Milk"
+          value={formatQuantity(data.milk.total, unit)}
+          hint={`All time · ${pluralize(data.milk.records, 'record')}`}
+        />
+        <StatCard label="This Month" value={formatQuantity(data.milk.this_month, unit)} hint={currentMonthLabel} />
         <StatCard
           label="Morning / Evening"
           value={`${formatQuantity(data.milk.morning, unit)} / ${formatQuantity(data.milk.evening, unit)}`}
@@ -167,26 +173,33 @@ export function AnimalProfilePage() {
               <div className="card-title">Financial Summary</div>
               <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Linked transactions</span>
             </div>
-            <div className="card-body">
-              <div className="detail-grid">
-                <div>
-                  <div className="detail-label">Income</div>
-                  <div className="detail-value" style={{ color: 'var(--accent)' }}>
-                    {formatMoney(data.finance.income, currency)}
+            {data.recent_transactions.length === 0 ? (
+              <EmptyState
+                title="No financial transactions"
+                message="Transactions linked to this animal will appear here."
+              />
+            ) : (
+              <div className="card-body">
+                <div className="detail-grid">
+                  <div>
+                    <div className="detail-label">Income</div>
+                    <div className="detail-value" style={{ color: 'var(--accent)' }}>
+                      {formatMoney(data.finance.income, currency)}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="detail-label">Expenses</div>
-                  <div className="detail-value" style={{ color: 'var(--danger)' }}>
-                    {formatMoney(data.finance.expenses, currency)}
+                  <div>
+                    <div className="detail-label">Expenses</div>
+                    <div className="detail-value" style={{ color: 'var(--danger)' }}>
+                      {formatMoney(data.finance.expenses, currency)}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="detail-label">Net</div>
-                  <div className="detail-value">{formatMoney(data.finance.net, currency)}</div>
+                  <div>
+                    <div className="detail-label">Net</div>
+                    <div className="detail-value">{formatMoney(data.finance.net, currency)}</div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -466,7 +479,9 @@ export function AnimalProfilePage() {
         <div className="card" style={{ marginTop: 20 }}>
           <div className="card-header">
             <div className="card-title">Monthly Production</div>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Last {data.monthly_milk.length} months</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+              Last {data.monthly_milk.length} {pluralize(data.monthly_milk.length, 'month')}
+            </span>
           </div>
           <div className="table-wrap">
             <table className="table">

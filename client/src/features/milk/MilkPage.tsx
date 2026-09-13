@@ -15,6 +15,7 @@ import { useData } from '../../lib/DataContext';
 import { useToast } from '../../lib/ToastContext';
 import { useMeta } from '../../lib/MetaContext';
 import { formatDate, formatQuantity, monthStartStr, todayStr, weekStartStr } from '../../lib/format';
+import { pluralize } from '../../lib/plural.js';
 import { SESSION_LABELS } from '../../lib/constants';
 import type { Animal, MilkRecord, MilkSummary, Paged, Session, WeekStart } from '../../lib/types';
 
@@ -190,7 +191,7 @@ export function MilkPage() {
           value={summary ? formatQuantity(summary.range.total, summary.unit) : '—'}
           hint={
             summary
-              ? `${summary.range.records} records · Morning ${formatQuantity(
+              ? `${pluralize(summary.range.records, 'record')} · Morning ${formatQuantity(
                   summary.range.morning,
                   summary.unit
                 )} · Evening ${formatQuantity(summary.range.evening, summary.unit)}`
