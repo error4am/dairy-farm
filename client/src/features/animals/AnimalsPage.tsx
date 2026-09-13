@@ -99,13 +99,17 @@ export function AnimalsPage() {
       render: (a) => (
         <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
           <Badge tone={STATUS_TONES[a.status]}>{ANIMAL_STATUS_LABELS[a.status]}</Badge>
-          {a.withdrawal_until ? <Badge tone="amber">Withdrawal</Badge> : null}
+          {a.withdrawal_until ? (
+            <span title={`Milk withdrawal until ${formatDate(a.withdrawal_until)}`}>
+              <Badge tone="amber">Withdrawal</Badge>
+            </span>
+          ) : null}
         </span>
       )
     },
     {
       key: 'total_milk',
-      header: 'Total Milk',
+      header: 'Total Milk (All Time)',
       sortKey: 'total_milk',
       align: 'right',
       render: (a) => <strong>{formatQuantity(a.total_milk ?? 0, meta.farm.milk_unit)}</strong>
@@ -213,12 +217,12 @@ export function AnimalsPage() {
 
       <ConfirmDialog
         open={deleting !== null}
-        title="Delete animal?"
+        title="Delete Animal?"
         message={
           deleting
-            ? `This will permanently delete animal #${deleting.tag_number}${
-                deleting.name ? ` (${deleting.name})` : ''
-              }. Animals with milk or financial records cannot be deleted — mark them as Sold or Deceased instead.`
+            ? `Are you sure you want to delete ${
+                deleting.name ? `${deleting.name} (#${deleting.tag_number})` : `animal #${deleting.tag_number}`
+              }? This action cannot be undone. Animals with milk, health, breeding or financial records cannot be deleted — mark them as Sold or Deceased instead.`
             : ''
         }
         busy={busy}
