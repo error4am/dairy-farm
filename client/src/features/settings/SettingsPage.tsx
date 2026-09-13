@@ -181,11 +181,11 @@ export function SettingsPage() {
                 </div>
                 <div>
                   <div className="detail-label">Version</div>
-                  <div className="detail-value">0.1.0 · Phase 2.2 (Health · Breeding)</div>
+                  <div className="detail-value">0.1.0 · Phase 2.3 (Employees)</div>
                 </div>
                 <div>
                   <div className="detail-label">Modules</div>
-                  <div className="detail-value">Dashboard · Animals · Health · Breeding · Milk · Finances</div>
+                  <div className="detail-value">Dashboard · Animals · Health · Breeding · Milk · Finances · Employees</div>
                 </div>
               </div>
             </div>

@@ -11,6 +11,42 @@ function clampLimit(value, fallback = 25, max = 200) {
   return Math.min(Math.floor(n), max);
 }
 
+const LIST_JOINS = `
+  LEFT JOIN animals a ON a.id = t.animal_id
+  LEFT JOIN employee_payments ep ON ep.transaction_id = t.id
+  LEFT JOIN employees e ON e.id = ep.employee_id
+  LEFT JOIN health_records hr ON hr.transaction_id = t.id
+`;
+
+function findLink(transactionId) {
+  const employeeLink = db
+    .prepare(
+      `SELECT ep.id AS payment_id, ep.employee_id, e.name AS employee_name
+       FROM employee_payments ep
+       JOIN employees e ON e.id = ep.employee_id
+       WHERE ep.transaction_id = ?`
+    )
+    .get(transactionId);
+  if (employeeLink) return { kind: 'employee_payment', ...employeeLink };
+
+  const healthLink = db.prepare('SELECT id FROM health_records WHERE transaction_id = ?').get(transactionId);
+  if (healthLink) return { kind: 'health_record', health_record_id: healthLink.id };
+
+  return null;
+}
+
+function assertNotLinked(transactionId) {
+  const link = findLink(transactionId);
+  if (!link) return;
+  if (link.kind === 'employee_payment') {
+    throw new HttpError(
+      409,
+      'This expense is linked to an employee payment. Edit or delete it from the Employees module.'
+    );
+  }
+  throw new HttpError(409, 'This expense is linked to a health record. Edit or delete it from the Health module.');
+}
+
 function list(query = {}) {
   const where = ['t.farm_id = ?'];
   const params = [FARM_ID];
@@ -36,16 +72,14 @@ function list(query = {}) {
     params.push(Number(query.animal_id));
   }
   if (query.search) {
-    where.push('(t.description LIKE ? OR a.tag_number LIKE ? OR a.name LIKE ?)');
+    where.push('(t.description LIKE ? OR a.tag_number LIKE ? OR a.name LIKE ? OR e.name LIKE ?)');
     const s = '%' + query.search + '%';
-    params.push(s, s, s);
+    params.push(s, s, s, s);
   }
 
   const whereSql = where.join(' AND ');
   const total = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM transactions t LEFT JOIN animals a ON a.id = t.animal_id WHERE ${whereSql}`
-    )
+    .prepare(`SELECT COUNT(*) AS n FROM transactions t ${LIST_JOINS} WHERE ${whereSql}`)
     .get(...params).n;
 
   const limit = clampLimit(query.limit);
@@ -53,9 +87,11 @@ function list(query = {}) {
 
   const items = db
     .prepare(
-      `SELECT t.*, a.tag_number AS animal_tag, a.name AS animal_name
+      `SELECT t.*, a.tag_number AS animal_tag, a.name AS animal_name,
+              e.id AS employee_id, e.name AS employee_name, e.employee_id AS employee_code,
+              ep.type AS payment_type, hr.id AS health_record_id
        FROM transactions t
-       LEFT JOIN animals a ON a.id = t.animal_id
+       ${LIST_JOINS}
        WHERE ${whereSql}
        ORDER BY t.date DESC, t.id DESC
        LIMIT ? OFFSET ?`
@@ -80,6 +116,10 @@ function totals(query = {}) {
   if (query.animal_id) {
     where.push('animal_id = ?');
     params.push(Number(query.animal_id));
+  }
+  if (query.category) {
+    where.push('category = ?');
+    params.push(query.category);
   }
 
   const row = db
@@ -179,6 +219,8 @@ function update(id, body) {
   const existing = db.prepare('SELECT * FROM transactions WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
   if (!existing) throw new HttpError(404, 'Transaction not found.');
 
+  assertNotLinked(id);
+
   const data = validate(body, RULES);
   if (!isValidCategory(data.type, data.category)) {
     throw new HttpError(400, 'Please check the highlighted fields.', {
@@ -198,8 +240,12 @@ function update(id, body) {
 }
 
 function remove(id) {
-  const info = db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
-  if (info.changes === 0) throw new HttpError(404, 'Transaction not found.');
+  const existing = db.prepare('SELECT id FROM transactions WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+  if (!existing) throw new HttpError(404, 'Transaction not found.');
+
+  assertNotLinked(id);
+
+  db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
   return { ok: true };
 }
 

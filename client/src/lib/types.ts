@@ -8,6 +8,9 @@ export type HealthType = 'vaccination' | 'treatment' | 'illness' | 'checkup' | '
 export type ServiceMethod = 'natural' | 'artificial_insemination' | 'other';
 export type PregnancyResult = 'pending' | 'pregnant' | 'not_pregnant';
 export type CalvingOutcome = 'pending' | 'successful' | 'complication' | 'aborted' | 'other';
+export type EmployeeStatus = 'active' | 'inactive';
+export type PayType = 'monthly' | 'daily';
+export type PaymentType = 'salary' | 'advance' | 'bonus' | 'other';
 
 export interface Farm {
   id: number;
@@ -67,6 +70,67 @@ export interface Transaction {
   updated_at: string;
   animal_tag?: string | null;
   animal_name?: string | null;
+  employee_id?: number | null;
+  employee_name?: string | null;
+  employee_code?: string | null;
+  payment_type?: PaymentType | null;
+  health_record_id?: number | null;
+}
+
+export interface Employee {
+  id: number;
+  farm_id: number;
+  employee_id: string;
+  name: string;
+  phone: string | null;
+  role: string | null;
+  joining_date: string | null;
+  status: EmployeeStatus;
+  pay_type: PayType;
+  salary: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  paid_total?: number;
+  last_payment_date?: string | null;
+  payments_count?: number;
+}
+
+export interface EmployeePayment {
+  id: number;
+  farm_id: number;
+  employee_id: number;
+  transaction_id: number | null;
+  date: string;
+  type: PaymentType;
+  amount: number;
+  description: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  employee_name?: string;
+  employee_code?: string;
+  employee_status?: EmployeeStatus;
+}
+
+export interface EmployeeSummary {
+  active_count: number;
+  inactive_count: number;
+  roles: string[];
+}
+
+export interface EmployeeProfile {
+  employee: Employee;
+  finance: {
+    total_paid: number;
+    this_month_paid: number;
+    total_advances: number;
+    outstanding_advances: number;
+    payments_count: number;
+    last_payment_date: string | null;
+  };
+  recent_payments: EmployeePayment[];
+  monthly_paid: { month: string; total: number }[];
 }
 
 export interface HealthRecord {
@@ -158,6 +222,9 @@ export interface Meta {
     SERVICE_METHODS: string[];
     PREGNANCY_RESULTS: string[];
     CALVING_OUTCOMES: string[];
+    EMPLOYEE_STATUSES: string[];
+    PAY_TYPES: string[];
+    PAYMENT_TYPES: string[];
   };
   categories: {
     income: Category[];
@@ -195,6 +262,10 @@ export interface Dashboard {
       currently_pregnant: number;
       calving_soon: number;
       pending_checks: number;
+    };
+    employees: {
+      active_count: number;
+      labor_cost_this_month: number;
     };
   };
   recent_activity: {

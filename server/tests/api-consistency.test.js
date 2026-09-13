@@ -187,6 +187,53 @@ test('breeding API records a pregnancy and matches the dashboard strip', async (
   assert.equal(summary.data.currently_pregnant[0].animal_tag, 'API-B1');
 });
 
+test('employee API creates a linked labor expense and dashboard matches finance', async () => {
+  const employee = await req('POST', '/employees', {
+    name: 'API Worker',
+    role: 'Milker',
+    pay_type: 'monthly',
+    salary: 30000,
+    joining_date: today
+  });
+  assert.equal(employee.status, 201, JSON.stringify(employee.data));
+  assert.match(employee.data.employee_id, /^EMP-/);
+
+  const payment = await req('POST', '/employee-payments', {
+    employee_id: employee.data.id,
+    date: today,
+    type: 'salary',
+    amount: 30000
+  });
+  assert.equal(payment.status, 201, JSON.stringify(payment.data));
+  assert.ok(payment.data.transaction_id);
+
+  const financeList = await req('GET', `/transactions?category=labor&from=${monthStart}&to=${today}&limit=200`);
+  const linked = financeList.data.items.find((t) => t.id === payment.data.transaction_id);
+  assert.ok(linked, 'linked labor expense appears in finance list');
+  assert.equal(linked.employee_name, 'API Worker');
+  assert.equal(linked.category, 'labor');
+
+  const laborTotal = financeList.data.items.reduce((sum, t) => sum + t.amount, 0);
+  const dashboard = await req('GET', '/dashboard');
+  assertClose(dashboard.data.metrics.employees.labor_cost_this_month, laborTotal, 'dashboard labor cost matches finance');
+  assert.equal(dashboard.data.metrics.employees.active_count, 1);
+
+  const summary = await req('GET', '/employees/summary');
+  assert.equal(summary.data.active_count, 1);
+
+  const directEdit = await req('PUT', `/transactions/${payment.data.transaction_id}`, {
+    date: today,
+    type: 'expense',
+    category: 'labor',
+    amount: 999
+  });
+  assert.equal(directEdit.status, 409, 'HTTP finance edit of linked payment is blocked');
+  assert.match(directEdit.data.error, /employee payment/i);
+
+  const directDelete = await req('DELETE', `/transactions/${payment.data.transaction_id}`);
+  assert.equal(directDelete.status, 409, 'HTTP finance delete of linked payment is blocked');
+});
+
 after(() => {
   if (server) server.close();
   db.close();

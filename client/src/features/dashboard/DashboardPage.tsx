@@ -73,13 +73,18 @@ export function DashboardPage() {
         />
       </div>
 
-      <div className="stat-grid" style={{ marginBottom: 20 }}>
+      <div
+        className="stat-grid"
+        style={{ marginBottom: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
+      >
         <StatCard label="Under Withdrawal" value={m.health.withdrawal_count} />
         <StatCard label="Vaccinations Due (30 days)" value={m.health.due_soon_count} />
         <StatCard label="Health Events (Month)" value={m.health.events_this_month} />
         <StatCard label="Pregnant" value={m.breeding.currently_pregnant} />
         <StatCard label="Calving Soon (30 days)" value={m.breeding.calving_soon} />
         <StatCard label="Pending Checks" value={m.breeding.pending_checks} />
+        <StatCard label="Active Employees" value={m.employees.active_count} />
+        <StatCard label="Labor Cost (Month)" value={formatMoney(m.employees.labor_cost_this_month, currency)} />
       </div>
 
       <div className="grid-2">

@@ -8,6 +8,9 @@ const HEALTH_TYPES = ['vaccination', 'treatment', 'illness', 'checkup', 'dewormi
 const SERVICE_METHODS = ['natural', 'artificial_insemination', 'other'];
 const PREGNANCY_RESULTS = ['pending', 'pregnant', 'not_pregnant'];
 const CALVING_OUTCOMES = ['pending', 'successful', 'complication', 'aborted', 'other'];
+const EMPLOYEE_STATUSES = ['active', 'inactive'];
+const PAY_TYPES = ['monthly', 'daily'];
+const PAYMENT_TYPES = ['salary', 'advance', 'bonus', 'other'];
 
 module.exports = {
   ANIMAL_TYPES,
@@ -19,5 +22,8 @@ module.exports = {
   HEALTH_TYPES,
   SERVICE_METHODS,
   PREGNANCY_RESULTS,
-  CALVING_OUTCOMES
+  CALVING_OUTCOMES,
+  EMPLOYEE_STATUSES,
+  PAY_TYPES,
+  PAYMENT_TYPES
 };

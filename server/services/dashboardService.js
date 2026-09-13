@@ -4,8 +4,9 @@ const settingsService = require('./settingsService');
 const financeService = require('./financeService');
 const healthService = require('./healthService');
 const breedingService = require('./breedingService');
+const employeeService = require('./employeeService');
 const { INCOME_CATEGORIES, EXPENSE_CATEGORIES } = require('../constants/categories');
-const { todayLocal, startOfWeek, lastNDates } = require('../utils/date');
+const { todayLocal, startOfWeek, lastNDates, startOfMonth } = require('../utils/date');
 
 function categoryLabel(type, value) {
   const list = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
@@ -39,6 +40,8 @@ function get() {
   const finance = financeService.totals();
   const health = healthService.summary();
   const breeding = breedingService.summary();
+  const employees = employeeService.summary();
+  const laborCost = financeService.totals({ from: startOfMonth(today), to: today, category: 'labor' }).expenses;
 
   const milk = db
     .prepare(
@@ -126,6 +129,10 @@ function get() {
         currently_pregnant: breeding.currently_pregnant_count,
         calving_soon: breeding.calving_soon_count,
         pending_checks: breeding.pending_checks_count
+      },
+      employees: {
+        active_count: employees.active_count,
+        labor_cost_this_month: laborCost
       }
     },
     recent_activity: activity,

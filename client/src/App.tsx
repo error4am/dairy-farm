@@ -7,6 +7,8 @@ import { HealthPage } from './features/health/HealthPage';
 import { BreedingPage } from './features/breeding/BreedingPage';
 import { MilkPage } from './features/milk/MilkPage';
 import { FinancesPage } from './features/finances/FinancesPage';
+import { EmployeesPage } from './features/employees/EmployeesPage';
+import { EmployeeProfilePage } from './features/employees/EmployeeProfilePage';
 import { SettingsPage } from './features/settings/SettingsPage';
 
 export default function App() {
@@ -20,6 +22,8 @@ export default function App() {
         <Route path="breeding" element={<BreedingPage />} />
         <Route path="milk" element={<MilkPage />} />
         <Route path="finances" element={<FinancesPage />} />
+        <Route path="employees" element={<EmployeesPage />} />
+        <Route path="employees/:id" element={<EmployeeProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

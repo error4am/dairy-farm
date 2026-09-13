@@ -9,6 +9,7 @@ const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/breeding', label: 'Breeding', icon: 'repeat' },
   { to: '/milk', label: 'Milk Production', icon: 'droplet' },
   { to: '/finances', label: 'Finances', icon: 'dollar' },
+  { to: '/employees', label: 'Employees', icon: 'users' },
   { to: '/settings', label: 'Settings', icon: 'settings' }
 ];
 
@@ -39,7 +40,7 @@ export function Sidebar({ open }: { open: boolean }) {
           </NavLink>
         ))}
       </nav>
-      <div className="sidebar-foot">Phase 2.2 · Health &amp; Breeding</div>
+      <div className="sidebar-foot">Phase 2.3 · Employees</div>
     </aside>
   );
 }

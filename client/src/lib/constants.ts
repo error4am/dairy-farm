@@ -2,9 +2,12 @@ import type {
   AnimalStatus,
   AnimalType,
   CalvingOutcome,
+  EmployeeStatus,
   Gender,
   HealthType,
   Meta,
+  PayType,
+  PaymentType,
   PregnancyResult,
   ServiceMethod,
   Session,
@@ -96,6 +99,35 @@ export const CALVING_OUTCOME_TONES: Record<CalvingOutcome, 'green' | 'amber' | '
   other: 'gray'
 };
 
+export const EMPLOYEE_STATUS_LABELS: Record<EmployeeStatus, string> = {
+  active: 'Active',
+  inactive: 'Inactive'
+};
+
+export const EMPLOYEE_STATUS_TONES: Record<EmployeeStatus, 'green' | 'gray'> = {
+  active: 'green',
+  inactive: 'gray'
+};
+
+export const PAY_TYPE_LABELS: Record<PayType, string> = {
+  monthly: 'Monthly',
+  daily: 'Daily'
+};
+
+export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  salary: 'Salary',
+  advance: 'Advance',
+  bonus: 'Bonus',
+  other: 'Other'
+};
+
+export const PAYMENT_TYPE_TONES: Record<PaymentType, 'green' | 'amber' | 'blue' | 'gray'> = {
+  salary: 'green',
+  advance: 'amber',
+  bonus: 'blue',
+  other: 'gray'
+};
+
 export const FALLBACK_META: Meta = {
   enums: {
     ANIMAL_TYPES: ['cow', 'buffalo', 'other'],
@@ -107,7 +139,10 @@ export const FALLBACK_META: Meta = {
     HEALTH_TYPES: ['vaccination', 'treatment', 'illness', 'checkup', 'deworming', 'other'],
     SERVICE_METHODS: ['natural', 'artificial_insemination', 'other'],
     PREGNANCY_RESULTS: ['pending', 'pregnant', 'not_pregnant'],
-    CALVING_OUTCOMES: ['pending', 'successful', 'complication', 'aborted', 'other']
+    CALVING_OUTCOMES: ['pending', 'successful', 'complication', 'aborted', 'other'],
+    EMPLOYEE_STATUSES: ['active', 'inactive'],
+    PAY_TYPES: ['monthly', 'daily'],
+    PAYMENT_TYPES: ['salary', 'advance', 'bonus', 'other']
   },
   categories: {
     income: [

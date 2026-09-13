@@ -15,6 +15,7 @@ import { useData } from '../../lib/DataContext';
 import { useToast } from '../../lib/ToastContext';
 import { useMeta } from '../../lib/MetaContext';
 import { formatDate, formatMoney, monthStartStr, todayStr, weekStartStr } from '../../lib/format';
+import { PAYMENT_TYPE_LABELS } from '../../lib/constants';
 import type { Animal, FinanceSummary, Paged, Transaction, TxType, WeekStart } from '../../lib/types';
 
 type Preset = 'today' | 'week' | 'month' | 'all' | 'custom';
@@ -132,6 +133,21 @@ export function FinancesPage() {
         )
     },
     {
+      key: 'employee',
+      header: 'Employee',
+      render: (t) =>
+        t.employee_id ? (
+          <Link to={`/employees/${t.employee_id}`}>
+            {t.employee_name}
+            {t.payment_type ? (
+              <span style={{ color: 'var(--text-3)' }}> · {PAYMENT_TYPE_LABELS[t.payment_type]}</span>
+            ) : null}
+          </Link>
+        ) : (
+          <span style={{ color: 'var(--text-3)' }}>—</span>
+        )
+    },
+    {
       key: 'amount',
       header: 'Amount',
       align: 'right',
@@ -147,21 +163,49 @@ export function FinancesPage() {
       header: '',
       align: 'right',
       width: '90px',
-      render: (t) => (
-        <div className="row-actions">
-          <button
-            type="button"
-            className="btn btn-ghost btn-icon btn-sm"
-            title="Edit"
-            onClick={() => setForm({ open: true, transaction: t })}
-          >
-            <Icon name="pencil" size={15} />
-          </button>
-          <button type="button" className="btn btn-ghost btn-icon btn-sm" title="Delete" onClick={() => setDeleting(t)}>
-            <Icon name="trash" size={15} />
-          </button>
-        </div>
-      )
+      render: (t) => {
+        if (t.employee_id) {
+          return (
+            <div className="row-actions">
+              <Link
+                to={`/employees/${t.employee_id}`}
+                className="btn btn-ghost btn-icon btn-sm"
+                title="Linked to an employee payment — edit it from the employee profile"
+              >
+                <Icon name="pencil" size={15} />
+              </Link>
+            </div>
+          );
+        }
+        if (t.health_record_id) {
+          return (
+            <div className="row-actions">
+              <Link
+                to="/health"
+                className="btn btn-ghost btn-icon btn-sm"
+                title="Linked to a health record — edit it from the Health module"
+              >
+                <Icon name="pencil" size={15} />
+              </Link>
+            </div>
+          );
+        }
+        return (
+          <div className="row-actions">
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon btn-sm"
+              title="Edit"
+              onClick={() => setForm({ open: true, transaction: t })}
+            >
+              <Icon name="pencil" size={15} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon btn-sm" title="Delete" onClick={() => setDeleting(t)}>
+              <Icon name="trash" size={15} />
+            </button>
+          </div>
+        );
+      }
     }
   ];
 
@@ -261,7 +305,7 @@ export function FinancesPage() {
         <input
           type="search"
           className="input search"
-          placeholder="Search description, animal…"
+          placeholder="Search description, animal, employee…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />

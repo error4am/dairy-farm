@@ -15,6 +15,8 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/animals', require('./routes/animals'));
 app.use('/api/health-records', require('./routes/health'));
 app.use('/api/breeding-records', require('./routes/breeding'));
+app.use('/api/employees', require('./routes/employees'));
+app.use('/api/employee-payments', require('./routes/employeePayments'));
 app.use('/api/milk-records', require('./routes/milk'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/dashboard', require('./routes/dashboard'));
