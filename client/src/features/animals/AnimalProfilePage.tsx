@@ -25,7 +25,7 @@ import {
   STATUS_TONES
 } from '../../lib/constants';
 import { formatAge, formatDate, formatMoney, formatQuantity } from '../../lib/format';
-import { pluralize } from '../../lib/plural.js';
+import { pluralize, formatCount } from '../../lib/plural.js';
 import type { Animal, AnimalProfile } from '../../lib/types';
 
 export function AnimalProfilePage() {
@@ -85,7 +85,7 @@ export function AnimalProfilePage() {
         <StatCard
           label="Total Milk"
           value={formatQuantity(data.milk.total, unit)}
-          hint={`All time · ${pluralize(data.milk.records, 'record')}`}
+          hint={`All time · ${formatCount(data.milk.records, 'record')}`}
         />
         <StatCard label="This Month" value={formatQuantity(data.milk.this_month, unit)} hint={currentMonthLabel} />
         <StatCard
