@@ -275,8 +275,8 @@ export function HealthPage() {
         </select>
         <input
           type="search"
-          className="input search"
-          placeholder="Search condition, medicine, vet…"
+          className="input search grow"
+          placeholder="Search health records…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
