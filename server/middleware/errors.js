@@ -23,6 +23,10 @@ function errorHandler(err, req, res, next) {
     return res.status(400).json({ error: 'Invalid request body.' });
   }
 
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body is too large.' });
+  }
+
   if (err && err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
     return res.status(409).json({ error: 'A record with these values already exists.' });
   }

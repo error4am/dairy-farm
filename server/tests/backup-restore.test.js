@@ -218,7 +218,14 @@ test('full restore preserves data, excludes post-backup records, and keeps relat
   assert.equal(expenses, 40500, 'finance expenses preserved');
   assert.equal(income - expenses, -35500, 'net profit preserved');
 
-  assert.equal(probe.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 4);
+  const expectedMigrations = fs
+    .readdirSync(path.join(__dirname, '..', 'db', 'migrations'))
+    .filter((file) => file.endsWith('.sql')).length;
+  assert.equal(
+    probe.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n,
+    expectedMigrations,
+    'all migrations applied to the restored database'
+  );
   probe.close();
 
   await withServer(restoredDb, async (base) => {
@@ -320,7 +327,14 @@ test('restored older-schema database migrates on startup with data intact', asyn
   });
 
   const probe = openReadonly(restoredOld);
-  assert.equal(probe.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 4, 'all migrations applied');
+  const expectedMigrations = fs
+    .readdirSync(path.join(__dirname, '..', 'db', 'migrations'))
+    .filter((file) => file.endsWith('.sql')).length;
+  assert.equal(
+    probe.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n,
+    expectedMigrations,
+    'all migrations applied'
+  );
   assert.ok(probe.prepare("SELECT * FROM animals WHERE tag_number = 'OLD-1'").get(), 'old data intact after migration');
   probe.close();
 });

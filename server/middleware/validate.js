@@ -44,8 +44,17 @@ function validate(body, rules) {
         continue;
       }
     } else if (rule.type === 'date') {
-      const ok = /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && !Number.isNaN(new Date(String(value) + 'T00:00:00').getTime());
-      if (!ok) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+      let validDate = false;
+      if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        const parsed = new Date(year, month - 1, day);
+        validDate =
+          parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+      }
+      if (!validDate) {
         errors[name] = label + ' must be a valid date.';
         continue;
       }
