@@ -1,0 +1,29 @@
+appId: com.dairyfarmmanager.app
+productName: Dairy Farm Manager
+directories:
+  output: release
+  buildResources: build
+files:
+  - package.json
+  - electron/**
+  - server/**
+  - client/dist/**
+  - "!server/tests/**"
+  - "!server/node_modules/**"
+  - "!**/*.map"
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Dairy Farm Manager
+npmRebuild: true

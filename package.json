@@ -1,7 +1,10 @@
 {
   "name": "dairy-farm",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Dairy Farm Management System",
+  "author": "Dairy Farm Manager",
+  "main": "electron/main.js",
   "workspaces": [
     "server",
     "client"
@@ -12,9 +15,19 @@
     "start": "npm run start -w server",
     "test": "npm run test -w server && npm run test -w client",
     "setup": "npm run db:seed -w server",
-    "db:reset": "npm run db:reset -w server"
+    "db:reset": "npm run db:reset -w server",
+    "electron:dev": "npm run build -w client && electron .",
+    "electron:rebuild": "electron-builder install-app-deps",
+    "electron:build": "npm run build -w client && electron-builder --win --x64 --dir",
+    "electron:dist": "npm run build -w client && electron-builder --win --x64"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "express": "^4.21.2"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "electron": "^42.11.3",
+    "electron-builder": "^26.15.3"
   }
 }
