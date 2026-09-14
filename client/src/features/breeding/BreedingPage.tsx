@@ -127,12 +127,22 @@ export function BreedingPage() {
     {
       key: 'heat',
       header: 'Heat Date',
-      render: (r) => (r.heat_date ? formatDate(r.heat_date) : <span style={{ color: 'var(--text-3)' }}>—</span>)
+      render: (r) =>
+        r.heat_date ? (
+          <span className="nowrap">{formatDate(r.heat_date)}</span>
+        ) : (
+          <span style={{ color: 'var(--text-3)' }}>—</span>
+        )
     },
     {
       key: 'service',
       header: 'Service Date',
-      render: (r) => (r.service_date ? formatDate(r.service_date) : <span style={{ color: 'var(--text-3)' }}>—</span>)
+      render: (r) =>
+        r.service_date ? (
+          <span className="nowrap">{formatDate(r.service_date)}</span>
+        ) : (
+          <span style={{ color: 'var(--text-3)' }}>—</span>
+        )
     },
     {
       key: 'method',
@@ -156,7 +166,7 @@ export function BreedingPage() {
       header: 'Expected Calving',
       render: (r) =>
         r.expected_calving_date ? (
-          <span>
+          <span className="nowrap">
             {formatDate(r.expected_calving_date)}
             {r.expected_calving_estimated === 1 ? (
               <span style={{ color: 'var(--text-3)', fontSize: 11.5 }}> est.</span>
@@ -169,11 +179,16 @@ export function BreedingPage() {
     {
       key: 'actual',
       header: 'Actual Calving',
-      render: (r) => (r.actual_calving_date ? formatDate(r.actual_calving_date) : <span style={{ color: 'var(--text-3)' }}>—</span>)
+      render: (r) =>
+        r.actual_calving_date ? (
+          <span className="nowrap">{formatDate(r.actual_calving_date)}</span>
+        ) : (
+          <span style={{ color: 'var(--text-3)' }}>—</span>
+        )
     },
     {
       key: 'outcome',
-      header: 'Outcome',
+      header: <span className="th-wrap">Calving Outcome</span>,
       render: (r) => <Badge tone={CALVING_OUTCOME_TONES[r.calving_outcome]}>{CALVING_OUTCOME_LABELS[r.calving_outcome]}</Badge>
     },
     {
@@ -345,7 +360,7 @@ export function BreedingPage() {
         </button>
       </div>
 
-      <div className="card">
+      <div className="card breeding-card">
         {error ? (
           <div className="card-body">
             <div className="error-box">{error}</div>

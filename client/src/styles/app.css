@@ -227,6 +227,24 @@
   outline-offset: 2px;
 }
 
+.breeding-card {
+  container-type: inline-size;
+}
+
+.th-wrap {
+  white-space: normal;
+}
+
+.breeding-card .nowrap {
+  white-space: normal;
+}
+
+@container (min-width: 1040px) {
+  .breeding-card .nowrap {
+    white-space: nowrap;
+  }
+}
+
 .dashboard-primary {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
