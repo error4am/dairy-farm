@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -23,7 +23,7 @@ const LIST_SELECT = `
   JOIN employees e ON e.id = p.employee_id
 `;
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['p.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -50,30 +50,36 @@ function list(query = {}) {
   }
 
   const whereSql = where.join(' AND ');
-  const total = db
-    .prepare(`SELECT COUNT(*) AS n FROM employee_payments p JOIN employees e ON e.id = p.employee_id WHERE ${whereSql}`)
-    .get(...params).n;
+  const total = (
+    await db.get(
+      `SELECT CAST(COUNT(*) AS INTEGER) AS n FROM employee_payments p JOIN employees e ON e.id = p.employee_id WHERE ${whereSql}`,
+      params
+    )
+  ).n;
 
   const limit = clampLimit(query.limit);
   const offset = Math.max(0, Number(query.offset) || 0);
 
-  const items = db
-    .prepare(`${LIST_SELECT} WHERE ${whereSql} ORDER BY p.date DESC, p.id DESC LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset);
+  const items = await db.all(`${LIST_SELECT} WHERE ${whereSql} ORDER BY p.date DESC, p.id DESC LIMIT ? OFFSET ?`, [
+    ...params,
+    limit,
+    offset
+  ]);
 
   return { items, total, limit, offset };
 }
 
-function get(id) {
-  const payment = db.prepare(`${LIST_SELECT} WHERE p.id = ? AND p.farm_id = ?`).get(id, FARM_ID);
+async function get(id) {
+  const payment = await db.get(`${LIST_SELECT} WHERE p.id = ? AND p.farm_id = ?`, [id, FARM_ID]);
   if (!payment) throw new HttpError(404, 'Payment not found.');
   return payment;
 }
 
-function assertEmployee(employeeId) {
-  const employee = db
-    .prepare('SELECT id, name, employee_id, status FROM employees WHERE id = ? AND farm_id = ?')
-    .get(employeeId, FARM_ID);
+async function assertEmployee(employeeId) {
+  const employee = await db.get('SELECT id, name, employee_id, status FROM employees WHERE id = ? AND farm_id = ?', [
+    employeeId,
+    FARM_ID
+  ]);
   if (!employee) {
     throw new HttpError(400, 'Selected employee was not found.', { employee_id: 'Selected employee was not found.' });
   }
@@ -84,13 +90,12 @@ function descriptionFor(employee, type) {
   return `${TYPE_LABELS[type]} — ${employee.name}`;
 }
 
-function insertExpense(data, employee) {
-  const info = db
-    .prepare(
-      `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
-       VALUES (?, NULL, ?, 'expense', 'labor', ?, ?)`
-    )
-    .run(FARM_ID, data.date, data.amount, descriptionFor(employee, data.type));
+async function insertExpense(tx, data, employee) {
+  const info = await tx.run(
+    `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
+     VALUES (?, NULL, ?, 'expense', 'labor', ?, ?)`,
+    [FARM_ID, data.date, data.amount, descriptionFor(employee, data.type)]
+  );
   return info.lastInsertRowid;
 }
 
@@ -108,86 +113,77 @@ const RULES = {
   notes: { label: 'Notes', maxLength: 2000 }
 };
 
-function create(body) {
+async function create(body) {
   const data = validate(body, RULES);
-  const employee = assertEmployee(data.employee_id);
+  const employee = await assertEmployee(data.employee_id);
 
-  const run = db.transaction(() => {
-    const transactionId = insertExpense(data, employee);
-    const info = db
-      .prepare(
-        `INSERT INTO employee_payments (farm_id, employee_id, transaction_id, date, type, amount, description, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        FARM_ID,
+  const id = await db.transaction(async (tx) => {
+    const transactionId = await insertExpense(tx, data, employee);
+    const info = await tx.run(
+      `INSERT INTO employee_payments (farm_id, employee_id, transaction_id, date, type, amount, description, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [FARM_ID, data.employee_id, transactionId, data.date, data.type, data.amount, data.description, data.notes]
+    );
+    return info.lastInsertRowid;
+  });
+
+  return get(id);
+}
+
+async function update(id, body) {
+  const existing = await db.get('SELECT * FROM employee_payments WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
+  if (!existing) throw new HttpError(404, 'Payment not found.');
+
+  const data = validate(body, RULES);
+  const employee = await assertEmployee(data.employee_id);
+
+  await db.transaction(async (tx) => {
+    let transactionId = existing.transaction_id;
+
+    if (transactionId) {
+      await tx.run(
+        `UPDATE transactions SET date = ?, amount = ?, description = ?, updated_at = ?
+         WHERE id = ? AND farm_id = ?`,
+        [data.date, data.amount, descriptionFor(employee, data.type), db.now(), transactionId, FARM_ID]
+      );
+    } else {
+      transactionId = await insertExpense(tx, data, employee);
+    }
+
+    await tx.run(
+      `UPDATE employee_payments SET
+         employee_id = ?, transaction_id = ?, date = ?, type = ?, amount = ?, description = ?, notes = ?,
+         updated_at = ?
+       WHERE id = ? AND farm_id = ?`,
+      [
         data.employee_id,
         transactionId,
         data.date,
         data.type,
         data.amount,
         data.description,
-        data.notes
-      );
-    return info.lastInsertRowid;
-  });
-
-  return get(run());
-}
-
-function update(id, body) {
-  const existing = db.prepare('SELECT * FROM employee_payments WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
-  if (!existing) throw new HttpError(404, 'Payment not found.');
-
-  const data = validate(body, RULES);
-  const employee = assertEmployee(data.employee_id);
-
-  const run = db.transaction(() => {
-    let transactionId = existing.transaction_id;
-
-    if (transactionId) {
-      db.prepare(
-        `UPDATE transactions SET date = ?, amount = ?, description = ?, updated_at = datetime('now')
-         WHERE id = ? AND farm_id = ?`
-      ).run(data.date, data.amount, descriptionFor(employee, data.type), transactionId, FARM_ID);
-    } else {
-      transactionId = insertExpense(data, employee);
-    }
-
-    db.prepare(
-      `UPDATE employee_payments SET
-         employee_id = ?, transaction_id = ?, date = ?, type = ?, amount = ?, description = ?, notes = ?,
-         updated_at = datetime('now')
-       WHERE id = ? AND farm_id = ?`
-    ).run(
-      data.employee_id,
-      transactionId,
-      data.date,
-      data.type,
-      data.amount,
-      data.description,
-      data.notes,
-      id,
-      FARM_ID
+        data.notes,
+        db.now(),
+        id,
+        FARM_ID
+      ]
     );
   });
 
-  run();
   return get(id);
 }
 
-function remove(id) {
-  const existing = db.prepare('SELECT * FROM employee_payments WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function remove(id) {
+  const existing = await db.get('SELECT * FROM employee_payments WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Payment not found.');
 
-  const run = db.transaction(() => {
-    db.prepare('DELETE FROM employee_payments WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+  await db.transaction(async (tx) => {
+    await tx.run('DELETE FROM employee_payments WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
     if (existing.transaction_id) {
-      db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(existing.transaction_id, FARM_ID);
+      await tx.run('DELETE FROM transactions WHERE id = ? AND farm_id = ?', [existing.transaction_id, FARM_ID]);
     }
   });
 
-  run();
   return { ok: true };
 }
 

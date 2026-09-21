@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -13,7 +13,7 @@ function clampLimit(value, fallback = 25, max = 200) {
   return Math.min(Math.floor(n), max);
 }
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['r.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -40,29 +40,31 @@ function list(query = {}) {
   }
 
   const whereSql = where.join(' AND ');
-  const total = db
-    .prepare(`SELECT COUNT(*) AS n FROM milk_records r JOIN animals a ON a.id = r.animal_id WHERE ${whereSql}`)
-    .get(...params).n;
+  const total = (
+    await db.get(
+      `SELECT CAST(COUNT(*) AS INTEGER) AS n FROM milk_records r JOIN animals a ON a.id = r.animal_id WHERE ${whereSql}`,
+      params
+    )
+  ).n;
 
   const limit = clampLimit(query.limit);
   const offset = Math.max(0, Number(query.offset) || 0);
 
-  const items = db
-    .prepare(
-      `SELECT r.*, a.tag_number AS animal_tag, a.name AS animal_name
-       FROM milk_records r
-       JOIN animals a ON a.id = r.animal_id
-       WHERE ${whereSql}
-       ORDER BY r.date DESC, r.id DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(...params, limit, offset);
+  const items = await db.all(
+    `SELECT r.*, a.tag_number AS animal_tag, a.name AS animal_name
+     FROM milk_records r
+     JOIN animals a ON a.id = r.animal_id
+     WHERE ${whereSql}
+     ORDER BY r.date DESC, r.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
 
   return { items, total, limit, offset };
 }
 
-function summary(query = {}) {
-  const farm = settingsService.get();
+async function summary(query = {}) {
+  const farm = await settingsService.get();
   const today = todayLocal();
 
   const range = { from: query.from || null, to: query.to || null };
@@ -86,64 +88,62 @@ function summary(query = {}) {
   }
   const whereSql = where.join(' AND ');
 
-  const rangeTotals = db
-    .prepare(
-      `SELECT
-         COALESCE(SUM(r.quantity), 0) AS total,
-         COALESCE(SUM(CASE WHEN r.session = 'morning' THEN r.quantity END), 0) AS morning,
-         COALESCE(SUM(CASE WHEN r.session = 'evening' THEN r.quantity END), 0) AS evening,
-         COUNT(*) AS records
-       FROM milk_records r WHERE ${whereSql}`
-    )
-    .get(...params);
+  const rangeTotals = await db.get(
+    `SELECT
+       COALESCE(SUM(r.quantity), 0) AS total,
+       COALESCE(SUM(CASE WHEN r.session = 'morning' THEN r.quantity END), 0) AS morning,
+       COALESCE(SUM(CASE WHEN r.session = 'evening' THEN r.quantity END), 0) AS evening,
+       CAST(COUNT(*) AS INTEGER) AS records
+     FROM milk_records r WHERE ${whereSql}`,
+    params
+  );
 
-  const todayTotals = db
-    .prepare(
-      `SELECT
-         COALESCE(SUM(quantity), 0) AS total,
-         COALESCE(SUM(CASE WHEN session = 'morning' THEN quantity END), 0) AS morning,
-         COALESCE(SUM(CASE WHEN session = 'evening' THEN quantity END), 0) AS evening
-       FROM milk_records WHERE farm_id = ? AND date = ?`
-    )
-    .get(FARM_ID, today);
+  const todayTotals = await db.get(
+    `SELECT
+       COALESCE(SUM(quantity), 0) AS total,
+       COALESCE(SUM(CASE WHEN session = 'morning' THEN quantity END), 0) AS morning,
+       COALESCE(SUM(CASE WHEN session = 'evening' THEN quantity END), 0) AS evening
+     FROM milk_records WHERE farm_id = ? AND date = ?`,
+    [FARM_ID, today]
+  );
 
-  const weekTotals = db
-    .prepare('SELECT COALESCE(SUM(quantity), 0) AS total FROM milk_records WHERE farm_id = ? AND date >= ? AND date <= ?')
-    .get(FARM_ID, startOfWeek(today, farm.week_start), today);
+  const weekTotals = await db.get(
+    'SELECT COALESCE(SUM(quantity), 0) AS total FROM milk_records WHERE farm_id = ? AND date >= ? AND date <= ?',
+    [FARM_ID, startOfWeek(today, farm.week_start), today]
+  );
 
-  const monthTotals = db
-    .prepare('SELECT COALESCE(SUM(quantity), 0) AS total FROM milk_records WHERE farm_id = ? AND date >= ? AND date <= ?')
-    .get(FARM_ID, startOfMonth(today), today);
+  const monthTotals = await db.get(
+    'SELECT COALESCE(SUM(quantity), 0) AS total FROM milk_records WHERE farm_id = ? AND date >= ? AND date <= ?',
+    [FARM_ID, startOfMonth(today), today]
+  );
 
-  const byDay = db
-    .prepare(
-      `SELECT r.date,
-         COALESCE(SUM(r.quantity), 0) AS total,
-         COALESCE(SUM(CASE WHEN r.session = 'morning' THEN r.quantity END), 0) AS morning,
-         COALESCE(SUM(CASE WHEN r.session = 'evening' THEN r.quantity END), 0) AS evening
-       FROM milk_records r
-       WHERE ${whereSql}
-       GROUP BY r.date
-       ORDER BY r.date DESC
-       LIMIT 366`
-    )
-    .all(...params);
+  const byDay = await db.all(
+    `SELECT r.date,
+       COALESCE(SUM(r.quantity), 0) AS total,
+       COALESCE(SUM(CASE WHEN r.session = 'morning' THEN r.quantity END), 0) AS morning,
+       COALESCE(SUM(CASE WHEN r.session = 'evening' THEN r.quantity END), 0) AS evening
+     FROM milk_records r
+     WHERE ${whereSql}
+     GROUP BY r.date
+     ORDER BY r.date DESC
+     LIMIT 366`,
+    params
+  );
 
-  const byAnimal = db
-    .prepare(
-      `SELECT r.animal_id, a.tag_number, a.name,
-         COALESCE(SUM(r.quantity), 0) AS total,
-         COALESCE(SUM(CASE WHEN r.session = 'morning' THEN r.quantity END), 0) AS morning,
-         COALESCE(SUM(CASE WHEN r.session = 'evening' THEN r.quantity END), 0) AS evening,
-         COUNT(*) AS records
-       FROM milk_records r
-       JOIN animals a ON a.id = r.animal_id
-       WHERE ${whereSql}
-       GROUP BY r.animal_id
-       ORDER BY total DESC
-       LIMIT 200`
-    )
-    .all(...params);
+  const byAnimal = await db.all(
+    `SELECT r.animal_id, a.tag_number, a.name,
+       COALESCE(SUM(r.quantity), 0) AS total,
+       COALESCE(SUM(CASE WHEN r.session = 'morning' THEN r.quantity END), 0) AS morning,
+       COALESCE(SUM(CASE WHEN r.session = 'evening' THEN r.quantity END), 0) AS evening,
+       CAST(COUNT(*) AS INTEGER) AS records
+     FROM milk_records r
+     JOIN animals a ON a.id = r.animal_id
+     WHERE ${whereSql}
+     GROUP BY r.animal_id, a.tag_number, a.name
+     ORDER BY total DESC
+     LIMIT 200`,
+    params
+  );
 
   return {
     unit: farm.milk_unit,
@@ -156,14 +156,14 @@ function summary(query = {}) {
   };
 }
 
-function assertAnimal(animalId) {
-  const animal = db.prepare('SELECT id, status FROM animals WHERE id = ? AND farm_id = ?').get(animalId, FARM_ID);
+async function assertAnimal(animalId) {
+  const animal = await db.get('SELECT id, status FROM animals WHERE id = ? AND farm_id = ?', [animalId, FARM_ID]);
   if (!animal) throw new HttpError(400, 'Selected animal was not found.', { animal_id: 'Selected animal was not found.' });
   return animal;
 }
 
-function rules() {
-  const farm = settingsService.get();
+async function rules() {
+  const farm = await settingsService.get();
   return {
     animal_id: { required: true, type: 'integer', label: 'Animal' },
     date: { required: true, type: 'date', label: 'Date' },
@@ -179,8 +179,8 @@ function rules() {
   };
 }
 
-function assertNoWithdrawal(animalId, date) {
-  const until = healthService.activeWithdrawal(animalId, date);
+async function assertNoWithdrawal(animalId, date) {
+  const until = await healthService.activeWithdrawal(animalId, date);
   if (until) {
     throw new HttpError(400, `Milk cannot be recorded while this animal is under withdrawal (until ${until}).`, {
       animal_id: `Under withdrawal until ${until}.`
@@ -188,25 +188,24 @@ function assertNoWithdrawal(animalId, date) {
   }
 }
 
-function create(body) {
-  const data = validate(body, rules());
-  const animal = assertAnimal(data.animal_id);
+async function create(body) {
+  const data = validate(body, await rules());
+  const animal = await assertAnimal(data.animal_id);
   if (animal.status !== 'active') {
     throw new HttpError(400, 'Milk can only be recorded for active animals.', {
       animal_id: 'This animal is not active.'
     });
   }
-  assertNoWithdrawal(data.animal_id, data.date);
+  await assertNoWithdrawal(data.animal_id, data.date);
   try {
-    const info = db
-      .prepare(
-        `INSERT INTO milk_records (farm_id, animal_id, date, session, quantity, unit, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(FARM_ID, data.animal_id, data.date, data.session, data.quantity, data.unit, data.notes);
-    return db.prepare('SELECT * FROM milk_records WHERE id = ?').get(info.lastInsertRowid);
+    const info = await db.run(
+      `INSERT INTO milk_records (farm_id, animal_id, date, session, quantity, unit, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [FARM_ID, data.animal_id, data.date, data.session, data.quantity, data.unit, data.notes]
+    );
+    return db.get('SELECT * FROM milk_records WHERE id = ?', [info.lastInsertRowid]);
   } catch (err) {
-    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    if (db.isUniqueViolation(err)) {
       throw new HttpError(409, 'A milk record for this animal, date and session already exists.', {
         animal_id: 'This animal already has a record for this date and session.'
       });
@@ -215,23 +214,24 @@ function create(body) {
   }
 }
 
-function update(id, body) {
-  const existing = db.prepare('SELECT * FROM milk_records WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function update(id, body) {
+  const existing = await db.get('SELECT * FROM milk_records WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Milk record not found.');
 
-  const data = validate(body, rules());
-  assertAnimal(data.animal_id);
-  assertNoWithdrawal(data.animal_id, data.date);
+  const data = validate(body, await rules());
+  await assertAnimal(data.animal_id);
+  await assertNoWithdrawal(data.animal_id, data.date);
   try {
-    db.prepare(
+    await db.run(
       `UPDATE milk_records SET
         animal_id = ?, date = ?, session = ?, quantity = ?, unit = ?, notes = ?,
-        updated_at = datetime('now')
-       WHERE id = ? AND farm_id = ?`
-    ).run(data.animal_id, data.date, data.session, data.quantity, data.unit, data.notes, id, FARM_ID);
-    return db.prepare('SELECT * FROM milk_records WHERE id = ?').get(id);
+        updated_at = ?
+       WHERE id = ? AND farm_id = ?`,
+      [data.animal_id, data.date, data.session, data.quantity, data.unit, data.notes, db.now(), id, FARM_ID]
+    );
+    return db.get('SELECT * FROM milk_records WHERE id = ?', [id]);
   } catch (err) {
-    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    if (db.isUniqueViolation(err)) {
       throw new HttpError(409, 'A milk record for this animal, date and session already exists.', {
         animal_id: 'This animal already has a record for this date and session.'
       });
@@ -240,8 +240,8 @@ function update(id, body) {
   }
 }
 
-function remove(id) {
-  const info = db.prepare('DELETE FROM milk_records WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+async function remove(id) {
+  const info = await db.run('DELETE FROM milk_records WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (info.changes === 0) throw new HttpError(404, 'Milk record not found.');
   return { ok: true };
 }

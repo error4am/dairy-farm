@@ -295,6 +295,10 @@ export interface Meta {
     income: Category[];
     expense: Category[];
   };
+  capabilities: {
+    backup: boolean;
+    postgres: boolean;
+  };
   farm: Farm;
 }
 

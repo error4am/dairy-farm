@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -22,14 +22,15 @@ const LIST_SELECT = `
          COALESCE(p.payments_count, 0) AS payments_count
   FROM employees e
   LEFT JOIN (
-    SELECT employee_id, SUM(amount) AS paid_total, MAX(date) AS last_payment_date, COUNT(*) AS payments_count
+    SELECT employee_id, SUM(amount) AS paid_total, MAX(date) AS last_payment_date,
+           CAST(COUNT(*) AS INTEGER) AS payments_count
     FROM employee_payments
     WHERE farm_id = ?
     GROUP BY employee_id
   ) p ON p.employee_id = e.id
 `;
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['e.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -50,67 +51,69 @@ function list(query = {}) {
   const order = SORTABLE[query.sort] || SORTABLE.created_at;
   const direction = String(query.dir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-  return db
-    .prepare(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${order} ${direction}, e.id DESC`)
-    .all(FARM_ID, ...params);
+  return db.all(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${order} ${direction}, e.id DESC`, [
+    FARM_ID,
+    ...params
+  ]);
 }
 
-function get(id) {
-  const employee = db.prepare(`${LIST_SELECT} WHERE e.id = ? AND e.farm_id = ?`).get(FARM_ID, id, FARM_ID);
+async function get(id) {
+  const employee = await db.get(`${LIST_SELECT} WHERE e.id = ? AND e.farm_id = ?`, [FARM_ID, id, FARM_ID]);
   if (!employee) throw new HttpError(404, 'Employee not found.');
   return employee;
 }
 
-function summary() {
-  const active = db
-    .prepare("SELECT COUNT(*) AS n FROM employees WHERE farm_id = ? AND status = 'active'")
-    .get(FARM_ID).n;
-  const inactive = db
-    .prepare("SELECT COUNT(*) AS n FROM employees WHERE farm_id = ? AND status = 'inactive'")
-    .get(FARM_ID).n;
-  const roles = db
-    .prepare(
+async function summary() {
+  const active = (
+    await db.get("SELECT CAST(COUNT(*) AS INTEGER) AS n FROM employees WHERE farm_id = ? AND status = 'active'", [
+      FARM_ID
+    ])
+  ).n;
+  const inactive = (
+    await db.get("SELECT CAST(COUNT(*) AS INTEGER) AS n FROM employees WHERE farm_id = ? AND status = 'inactive'", [
+      FARM_ID
+    ])
+  ).n;
+  const roles = (
+    await db.all(
       `SELECT DISTINCT role FROM employees
        WHERE farm_id = ? AND role IS NOT NULL AND role <> ''
-       ORDER BY role`
+       ORDER BY role`,
+      [FARM_ID]
     )
-    .all(FARM_ID)
-    .map((r) => r.role);
+  ).map((r) => r.role);
 
   return { active_count: active, inactive_count: inactive, roles };
 }
 
-function profile(id) {
-  const employee = get(id);
+async function profile(id) {
+  const employee = await get(id);
 
-  const finance = db
-    .prepare(
-      `SELECT
-         COALESCE(SUM(amount), 0) AS total_paid,
-         COALESCE(SUM(CASE WHEN substr(date, 1, 7) = substr(?, 1, 7) THEN amount END), 0) AS this_month_paid,
-         COALESCE(SUM(CASE WHEN type = 'advance' THEN amount END), 0) AS total_advances,
-         COUNT(*) AS payments_count,
-         MAX(date) AS last_payment_date
-       FROM employee_payments WHERE farm_id = ? AND employee_id = ?`
-    )
-    .get(todayLocal(), FARM_ID, id);
+  const finance = await db.get(
+    `SELECT
+       COALESCE(SUM(amount), 0) AS total_paid,
+       COALESCE(SUM(CASE WHEN substr(date, 1, 7) = substr(?, 1, 7) THEN amount END), 0) AS this_month_paid,
+       COALESCE(SUM(CASE WHEN type = 'advance' THEN amount END), 0) AS total_advances,
+       CAST(COUNT(*) AS INTEGER) AS payments_count,
+       MAX(date) AS last_payment_date
+     FROM employee_payments WHERE farm_id = ? AND employee_id = ?`,
+    [todayLocal(), FARM_ID, id]
+  );
 
-  const recentPayments = db
-    .prepare(
-      `SELECT * FROM employee_payments
-       WHERE farm_id = ? AND employee_id = ?
-       ORDER BY date DESC, id DESC LIMIT 50`
-    )
-    .all(FARM_ID, id);
+  const recentPayments = await db.all(
+    `SELECT * FROM employee_payments
+     WHERE farm_id = ? AND employee_id = ?
+     ORDER BY date DESC, id DESC LIMIT 50`,
+    [FARM_ID, id]
+  );
 
-  const monthlyPaid = db
-    .prepare(
-      `SELECT substr(date, 1, 7) AS month, SUM(amount) AS total
-       FROM employee_payments
-       WHERE farm_id = ? AND employee_id = ?
-       GROUP BY month ORDER BY month DESC LIMIT 6`
-    )
-    .all(FARM_ID, id);
+  const monthlyPaid = await db.all(
+    `SELECT substr(date, 1, 7) AS month, SUM(amount) AS total
+     FROM employee_payments
+     WHERE farm_id = ? AND employee_id = ?
+     GROUP BY substr(date, 1, 7) ORDER BY month DESC LIMIT 6`,
+    [FARM_ID, id]
+  );
 
   return {
     employee,
@@ -136,8 +139,8 @@ const RULES = {
   notes: { label: 'Notes', maxLength: 2000 }
 };
 
-function nextEmployeeCode() {
-  const rows = db.prepare('SELECT employee_id FROM employees WHERE farm_id = ?').all(FARM_ID);
+async function nextEmployeeCode() {
+  const rows = await db.all('SELECT employee_id FROM employees WHERE farm_id = ?', [FARM_ID]);
   let max = 0;
   for (const row of rows) {
     const match = /^EMP-(\d+)$/.exec(row.employee_id);
@@ -146,17 +149,15 @@ function nextEmployeeCode() {
   return 'EMP-' + String(max + 1).padStart(3, '0');
 }
 
-function create(body) {
+async function create(body) {
   const data = validate(body, RULES);
-  const info = db
-    .prepare(
-      `INSERT INTO employees
-         (farm_id, employee_id, name, phone, role, joining_date, status, pay_type, salary, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  const info = await db.run(
+    `INSERT INTO employees
+       (farm_id, employee_id, name, phone, role, joining_date, status, pay_type, salary, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
       FARM_ID,
-      nextEmployeeCode(),
+      await nextEmployeeCode(),
       data.name,
       data.phone,
       data.role,
@@ -165,43 +166,48 @@ function create(body) {
       data.pay_type,
       data.salary,
       data.notes
-    );
+    ]
+  );
   return get(info.lastInsertRowid);
 }
 
-function update(id, body) {
-  const existing = get(id);
+async function update(id, body) {
+  const existing = await get(id);
   const data = validate(body, RULES);
-  db.prepare(
+  await db.run(
     `UPDATE employees SET
        name = ?, phone = ?, role = ?, joining_date = ?, status = ?, pay_type = ?, salary = ?, notes = ?,
-       updated_at = datetime('now')
-     WHERE id = ? AND farm_id = ?`
-  ).run(
-    data.name,
-    data.phone,
-    data.role,
-    data.joining_date,
-    data.status,
-    data.pay_type,
-    data.salary,
-    data.notes,
-    existing.id,
-    FARM_ID
+       updated_at = ?
+     WHERE id = ? AND farm_id = ?`,
+    [
+      data.name,
+      data.phone,
+      data.role,
+      data.joining_date,
+      data.status,
+      data.pay_type,
+      data.salary,
+      data.notes,
+      db.now(),
+      existing.id,
+      FARM_ID
+    ]
   );
   return get(existing.id);
 }
 
-function remove(id) {
-  get(id);
-  const payments = db.prepare('SELECT COUNT(*) AS n FROM employee_payments WHERE employee_id = ?').get(id).n;
+async function remove(id) {
+  await get(id);
+  const payments = (
+    await db.get('SELECT CAST(COUNT(*) AS INTEGER) AS n FROM employee_payments WHERE employee_id = ?', [id])
+  ).n;
   if (payments > 0) {
     throw new HttpError(
       409,
       'This employee has payment records and cannot be deleted. Mark them Inactive instead.'
     );
   }
-  db.prepare('DELETE FROM employees WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+  await db.run('DELETE FROM employees WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   return { ok: true };
 }
 

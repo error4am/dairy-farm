@@ -36,13 +36,13 @@ const txFixtures = [];
 
 const inRange = (date, from, to) => date >= from && date <= to;
 
-test('empty database produces zero totals and zero net', () => {
-  const totals = financeService.totals();
+test('empty database produces zero totals and zero net', async () => {
+  const totals = await financeService.totals();
   assert.equal(totals.income, 0);
   assert.equal(totals.expenses, 0);
   assert.equal(totals.net, 0);
 
-  const dashboard = dashboardService.get();
+  const dashboard = await dashboardService.get();
   assert.equal(dashboard.metrics.revenue_all_time, 0);
   assert.equal(dashboard.metrics.expenses_all_time, 0);
   assert.equal(dashboard.metrics.net_all_time, 0);
@@ -50,14 +50,14 @@ test('empty database produces zero totals and zero net', () => {
   assert.equal(dashboard.metrics.milk_week, 0);
   assert.equal(dashboard.metrics.active_animals, 0);
 
-  const summary = financeService.summary();
+  const summary = await financeService.summary();
   assert.equal(summary.range.net, 0);
   assert.equal(summary.all_time.net, 0);
 });
 
-test('seed fixtures', () => {
-  const a = animalService.create({ tag_number: 'T-1', type: 'cow', gender: 'female' });
-  const b = animalService.create({ tag_number: 'T-2', type: 'buffalo', gender: 'female' });
+test('seed fixtures', async () => {
+  const a = await animalService.create({ tag_number: 'T-1', type: 'cow', gender: 'female' });
+  const b = await animalService.create({ tag_number: 'T-2', type: 'buffalo', gender: 'female' });
 
   const milk = [
     { animal_id: a.id, date: today, session: 'morning', quantity: 12.5, unit: 'L' },
@@ -69,7 +69,7 @@ test('seed fixtures', () => {
     { animal_id: b.id, date: addDays(today, 3), session: 'morning', quantity: 9, unit: 'L' }
   ];
   for (const record of milk) {
-    milkService.create(record);
+    await milkService.create(record);
     milkFixtures.push(record);
   }
 
@@ -83,23 +83,23 @@ test('seed fixtures', () => {
     { date: addDays(today, -40), type: 'income', category: 'animal_sale', amount: 5000, description: 'old income' }
   ];
   for (const record of tx) {
-    financeService.create(record);
+    await financeService.create(record);
     txFixtures.push(record);
   }
 
-  assert.equal(dashboardService.get().metrics.active_animals, 2);
+  assert.equal((await dashboardService.get()).metrics.active_animals, 2);
 });
 
-test('all-time totals sum every transaction and net equals income minus expenses', () => {
-  const totals = financeService.totals();
+test('all-time totals sum every transaction and net equals income minus expenses', async () => {
+  const totals = await financeService.totals();
   assertClose(totals.income, sum(txFixtures.filter((t) => t.type === 'income'), 'amount'), 'all-time income');
   assertClose(totals.expenses, sum(txFixtures.filter((t) => t.type === 'expense'), 'amount'), 'all-time expenses');
   assert.equal(totals.net, totals.income - totals.expenses, 'net identity');
   assert.equal(totals.count, txFixtures.length);
 });
 
-test('range totals only include transactions inside the range and net matches that range', () => {
-  const range = financeService.totals({ from: mondayWeek, to: today });
+test('range totals only include transactions inside the range and net matches that range', async () => {
+  const range = await financeService.totals({ from: mondayWeek, to: today });
   const expectedIncome = sum(
     txFixtures.filter((t) => t.type === 'income' && inRange(t.date, mondayWeek, today)),
     'amount'
@@ -120,10 +120,10 @@ test('range totals only include transactions inside the range and net matches th
   assert.ok(range.count < txFixtures.length, 'range count excludes transactions outside the range');
 });
 
-test('finance summary range matches totals and all_time matches un-ranged totals', () => {
-  const summary = financeService.summary({ from: monthStart, to: today });
-  const range = financeService.totals({ from: monthStart, to: today });
-  const all = financeService.totals();
+test('finance summary range matches totals and all_time matches un-ranged totals', async () => {
+  const summary = await financeService.summary({ from: monthStart, to: today });
+  const range = await financeService.totals({ from: monthStart, to: today });
+  const all = await financeService.totals();
 
   assertClose(summary.range.income, range.income, 'summary range income');
   assertClose(summary.range.expenses, range.expenses, 'summary range expenses');
@@ -138,10 +138,10 @@ test('finance summary range matches totals and all_time matches un-ranged totals
   assertClose(expenseByCategory, summary.range.expenses, 'category breakdown sums to range expenses');
 });
 
-test('dashboard all-time finance cards match the finance all-time totals exactly', () => {
-  const dashboard = dashboardService.get();
-  const all = financeService.totals();
-  const summary = financeService.summary();
+test('dashboard all-time finance cards match the finance all-time totals exactly', async () => {
+  const dashboard = await dashboardService.get();
+  const all = await financeService.totals();
+  const summary = await financeService.summary();
 
   assertClose(dashboard.metrics.revenue_all_time, all.income, 'dashboard revenue vs totals');
   assertClose(dashboard.metrics.expenses_all_time, all.expenses, 'dashboard expenses vs totals');
@@ -155,8 +155,8 @@ test('dashboard all-time finance cards match the finance all-time totals exactly
   assert.equal(dashboard.metrics.net_all_time, summary.all_time.net, 'dashboard net vs finance summary');
 });
 
-test('dashboard milk cards use the record date and split morning/evening correctly', () => {
-  const dashboard = dashboardService.get();
+test('dashboard milk cards use the record date and split morning/evening correctly', async () => {
+  const dashboard = await dashboardService.get();
   const todayRecords = milkFixtures.filter((m) => m.date === today);
 
   assertClose(dashboard.metrics.milk_today, sum(todayRecords, 'quantity'), 'milk today');
@@ -177,30 +177,30 @@ test('dashboard milk cards use the record date and split morning/evening correct
   );
 });
 
-test('dashboard week total respects the farm week start, matches the milk page and excludes future dates', () => {
+test('dashboard week total respects the farm week start, matches the milk page and excludes future dates', async () => {
   const expectedMonday = sum(milkFixtures.filter((m) => inRange(m.date, mondayWeek, today)), 'quantity');
-  assertClose(dashboardService.get().metrics.milk_week, expectedMonday, 'monday week total');
-  assertClose(milkService.summary({}).week, expectedMonday, 'milk page week matches dashboard');
+  assertClose((await dashboardService.get()).metrics.milk_week, expectedMonday, 'monday week total');
+  assertClose((await milkService.summary({})).week, expectedMonday, 'milk page week matches dashboard');
 
   try {
-    settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'sunday', gestation_days: 283 });
+    await settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'sunday', gestation_days: 283 });
     const expectedSunday = sum(milkFixtures.filter((m) => inRange(m.date, sundayWeek, today)), 'quantity');
-    assertClose(dashboardService.get().metrics.milk_week, expectedSunday, 'sunday week total');
-    assertClose(milkService.summary({}).week, expectedSunday, 'milk page sunday week matches dashboard');
+    assertClose((await dashboardService.get()).metrics.milk_week, expectedSunday, 'sunday week total');
+    assertClose((await milkService.summary({})).week, expectedSunday, 'milk page sunday week matches dashboard');
   } finally {
-    settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'monday', gestation_days: 283 });
+    await settingsService.update({ name: 'Test Farm', currency: 'PKR', milk_unit: 'L', week_start: 'monday', gestation_days: 283 });
   }
 
   const futureRecords = milkFixtures.filter((m) => m.date > today);
   assert.ok(futureRecords.length > 0, 'fixture must contain a future-dated record');
   assert.ok(
-    dashboardService.get().metrics.milk_week < sum(milkFixtures, 'quantity'),
+    (await dashboardService.get()).metrics.milk_week < sum(milkFixtures, 'quantity'),
     'future-dated record is excluded from the week total'
   );
 });
 
-test('milk summary range, today, week and month are consistent with the records', () => {
-  const summary = milkService.summary({ from: monthStart, to: today });
+test('milk summary range, today, week and month are consistent with the records', async () => {
+  const summary = await milkService.summary({ from: monthStart, to: today });
   const expectedRange = sum(milkFixtures.filter((m) => inRange(m.date, monthStart, today)), 'quantity');
   const expectedToday = sum(milkFixtures.filter((m) => m.date === today), 'quantity');
   const expectedWeek = sum(milkFixtures.filter((m) => inRange(m.date, mondayWeek, today)), 'quantity');
@@ -218,8 +218,8 @@ test('milk summary range, today, week and month are consistent with the records'
   assertClose(sum(summary.by_day, 'total'), expectedRange, 'by-day sums to range');
 });
 
-test('last-7-days series has 7 buckets, zero-fills gaps and ends today', () => {
-  const dashboard = dashboardService.get();
+test('last-7-days series has 7 buckets, zero-fills gaps and ends today', async () => {
+  const dashboard = await dashboardService.get();
   const dates = lastNDates(7, today);
 
   assert.equal(dashboard.milk_last_7_days.length, 7);
@@ -239,16 +239,16 @@ test('last-7-days series has 7 buckets, zero-fills gaps and ends today', () => {
   );
 });
 
-test('deleting a transaction updates range, all-time and dashboard consistently', () => {
-  const beforeAll = financeService.totals();
-  const beforeRange = financeService.totals({ from: mondayWeek, to: today });
+test('deleting a transaction updates range, all-time and dashboard consistently', async () => {
+  const beforeAll = await financeService.totals();
+  const beforeRange = await financeService.totals({ from: mondayWeek, to: today });
 
-  const list = financeService.list({ from: mondayWeek, to: today, limit: 1 });
+  const list = await financeService.list({ from: mondayWeek, to: today, limit: 1 });
   const target = list.items[0];
-  financeService.remove(target.id);
+  await financeService.remove(target.id);
 
-  const afterAll = financeService.totals();
-  const afterRange = financeService.totals({ from: mondayWeek, to: today });
+  const afterAll = await financeService.totals();
+  const afterRange = await financeService.totals({ from: mondayWeek, to: today });
 
   const incomeDelta = target.type === 'income' ? target.amount : 0;
   const expenseDelta = target.type === 'expense' ? target.amount : 0;
@@ -261,7 +261,7 @@ test('deleting a transaction updates range, all-time and dashboard consistently'
   assertClose(afterRange.expenses, beforeRange.expenses - expenseDelta, 'range expenses after deletion');
   assert.equal(afterRange.net, afterRange.income - afterRange.expenses, 'range net identity');
 
-  const dashboard = dashboardService.get();
+  const dashboard = await dashboardService.get();
   assertClose(dashboard.metrics.revenue_all_time, afterAll.income, 'dashboard reflects deletion');
   assert.equal(
     dashboard.metrics.net_all_time,

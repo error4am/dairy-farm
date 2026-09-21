@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -11,14 +11,15 @@ const LIST_SELECT = `
          m.last_movement_date
   FROM inventory_items i
   LEFT JOIN (
-    SELECT item_id, SUM(quantity) AS current_stock, COUNT(*) AS movements_count, MAX(date) AS last_movement_date
+    SELECT item_id, SUM(quantity) AS current_stock, CAST(COUNT(*) AS INTEGER) AS movements_count,
+           MAX(date) AS last_movement_date
     FROM inventory_movements
     WHERE farm_id = ?
     GROUP BY item_id
   ) m ON m.item_id = i.id
 `;
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['i.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -43,38 +44,38 @@ function list(query = {}) {
     where.push('i.active = 1 AND COALESCE(m.current_stock, 0) <= 0');
   }
 
-  return db
-    .prepare(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY i.active DESC, i.name COLLATE NOCASE ASC`)
-    .all(FARM_ID, ...params);
+  return db.all(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY i.active DESC, LOWER(i.name) ASC`, [
+    FARM_ID,
+    ...params
+  ]);
 }
 
-function get(id) {
-  const item = db.prepare(`${LIST_SELECT} WHERE i.id = ? AND i.farm_id = ?`).get(FARM_ID, id, FARM_ID);
+async function get(id) {
+  const item = await db.get(`${LIST_SELECT} WHERE i.id = ? AND i.farm_id = ?`, [FARM_ID, id, FARM_ID]);
   if (!item) throw new HttpError(404, 'Inventory item not found.');
   return item;
 }
 
-function breakdown(itemId) {
-  return db
-    .prepare(
-      `SELECT
-         COALESCE(SUM(CASE WHEN type = 'opening' THEN quantity END), 0) AS opening,
-         COALESCE(SUM(CASE WHEN type = 'purchase' THEN quantity END), 0) AS purchased,
-         COALESCE(SUM(CASE WHEN type = 'consumption' THEN quantity END), 0) AS consumed,
-         COALESCE(SUM(CASE WHEN type = 'waste' THEN quantity END), 0) AS wasted,
-         COALESCE(SUM(CASE WHEN type = 'adjustment' THEN quantity END), 0) AS adjusted,
-         COALESCE(SUM(quantity), 0) AS current_stock,
-         COUNT(*) AS movements_count,
-         MAX(date) AS last_movement_date
-       FROM inventory_movements
-       WHERE farm_id = ? AND item_id = ?`
-    )
-    .get(FARM_ID, itemId);
+async function breakdown(itemId) {
+  return db.get(
+    `SELECT
+       COALESCE(SUM(CASE WHEN type = 'opening' THEN quantity END), 0) AS opening,
+       COALESCE(SUM(CASE WHEN type = 'purchase' THEN quantity END), 0) AS purchased,
+       COALESCE(SUM(CASE WHEN type = 'consumption' THEN quantity END), 0) AS consumed,
+       COALESCE(SUM(CASE WHEN type = 'waste' THEN quantity END), 0) AS wasted,
+       COALESCE(SUM(CASE WHEN type = 'adjustment' THEN quantity END), 0) AS adjusted,
+       COALESCE(SUM(quantity), 0) AS current_stock,
+       CAST(COUNT(*) AS INTEGER) AS movements_count,
+       MAX(date) AS last_movement_date
+     FROM inventory_movements
+     WHERE farm_id = ? AND item_id = ?`,
+    [FARM_ID, itemId]
+  );
 }
 
-function profile(id) {
-  const item = get(id);
-  const b = breakdown(id);
+async function profile(id) {
+  const item = await get(id);
+  const b = await breakdown(id);
   return {
     item,
     stock: {
@@ -90,26 +91,27 @@ function profile(id) {
   };
 }
 
-function currentStock(itemId) {
-  return db
-    .prepare('SELECT COALESCE(SUM(quantity), 0) AS total FROM inventory_movements WHERE farm_id = ? AND item_id = ?')
-    .get(FARM_ID, itemId).total;
+async function currentStock(itemId) {
+  const row = await db.get(
+    'SELECT COALESCE(SUM(quantity), 0) AS total FROM inventory_movements WHERE farm_id = ? AND item_id = ?',
+    [FARM_ID, itemId]
+  );
+  return row.total;
 }
 
-function summary() {
-  const rows = db
-    .prepare(
-      `SELECT i.active, i.minimum_stock, COALESCE(m.current_stock, 0) AS current_stock
-       FROM inventory_items i
-       LEFT JOIN (
-         SELECT item_id, SUM(quantity) AS current_stock
-         FROM inventory_movements
-         WHERE farm_id = ?
-         GROUP BY item_id
-       ) m ON m.item_id = i.id
-       WHERE i.farm_id = ?`
-    )
-    .all(FARM_ID, FARM_ID);
+async function summary() {
+  const rows = await db.all(
+    `SELECT i.active, i.minimum_stock, COALESCE(m.current_stock, 0) AS current_stock
+     FROM inventory_items i
+     LEFT JOIN (
+       SELECT item_id, SUM(quantity) AS current_stock
+       FROM inventory_movements
+       WHERE farm_id = ?
+       GROUP BY item_id
+     ) m ON m.item_id = i.id
+     WHERE i.farm_id = ?`,
+    [FARM_ID, FARM_ID]
+  );
 
   let activeCount = 0;
   let lowStock = 0;
@@ -146,51 +148,51 @@ const RULES = {
   notes: { label: 'Notes', maxLength: 2000 }
 };
 
-function create(body) {
+async function create(body) {
   const data = validate(body, RULES);
   try {
-    const info = db
-      .prepare(
-        `INSERT INTO inventory_items (farm_id, name, category, unit, minimum_stock, active, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(FARM_ID, data.name, data.category, data.unit, data.minimum_stock, data.active, data.notes);
+    const info = await db.run(
+      `INSERT INTO inventory_items (farm_id, name, category, unit, minimum_stock, active, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [FARM_ID, data.name, data.category, data.unit, data.minimum_stock, data.active, data.notes]
+    );
     return get(info.lastInsertRowid);
   } catch (err) {
-    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    if (db.isUniqueViolation(err)) {
       throw new HttpError(409, `An inventory item named "${data.name}" already exists.`);
     }
     throw err;
   }
 }
 
-function update(id, body) {
-  const existing = get(id);
+async function update(id, body) {
+  const existing = await get(id);
   const data = validate(body, RULES);
   try {
-    db.prepare(
+    await db.run(
       `UPDATE inventory_items SET
-         name = ?, category = ?, unit = ?, minimum_stock = ?, active = ?, notes = ?, updated_at = datetime('now')
-       WHERE id = ? AND farm_id = ?`
-    ).run(data.name, data.category, data.unit, data.minimum_stock, data.active, data.notes, existing.id, FARM_ID);
+         name = ?, category = ?, unit = ?, minimum_stock = ?, active = ?, notes = ?, updated_at = ?
+       WHERE id = ? AND farm_id = ?`,
+      [data.name, data.category, data.unit, data.minimum_stock, data.active, data.notes, db.now(), existing.id, FARM_ID]
+    );
     return get(existing.id);
   } catch (err) {
-    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    if (db.isUniqueViolation(err)) {
       throw new HttpError(409, `An inventory item named "${data.name}" already exists.`);
     }
     throw err;
   }
 }
 
-function remove(id) {
-  const item = get(id);
+async function remove(id) {
+  const item = await get(id);
   if (item.movements_count > 0) {
     throw new HttpError(
       409,
       'This item has stock movements and cannot be deleted. Mark it inactive instead.'
     );
   }
-  db.prepare('DELETE FROM inventory_items WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+  await db.run('DELETE FROM inventory_items WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   return { ok: true };
 }
 

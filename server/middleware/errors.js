@@ -1,3 +1,5 @@
+const db = require('../db');
+
 class HttpError extends Error {
   constructor(status, message, details) {
     super(message);
@@ -27,11 +29,11 @@ function errorHandler(err, req, res, next) {
     return res.status(413).json({ error: 'Request body is too large.' });
   }
 
-  if (err && err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+  if (db.isUniqueViolation(err)) {
     return res.status(409).json({ error: 'A record with these values already exists.' });
   }
 
-  if (err && typeof err.code === 'string' && err.code.startsWith('SQLITE_CONSTRAINT')) {
+  if (db.isConstraintViolation(err)) {
     return res.status(400).json({ error: 'Invalid data. Please check the values and try again.' });
   }
 

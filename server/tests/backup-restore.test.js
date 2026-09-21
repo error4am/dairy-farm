@@ -99,13 +99,13 @@ function openReadonly(file) {
 
 let backupPath = null;
 
-test('creates a valid, self-contained backup of the active database', () => {
-  const bella = animalService.create({ tag_number: 'B-1', name: 'Bella', type: 'cow', gender: 'female' });
-  milkService.create({ animal_id: bella.id, date: today, session: 'morning', quantity: 12.5, unit: 'L' });
-  milkService.create({ animal_id: bella.id, date: today, session: 'evening', quantity: 10, unit: 'L' });
-  financeService.create({ date: today, type: 'income', category: 'milk_sale', amount: 5000, description: 'Milk sale' });
-  financeService.create({ date: today, type: 'expense', category: 'feed', amount: 1500, description: 'Fodder' });
-  healthService.create({
+test('creates a valid, self-contained backup of the active database', async () => {
+  const bella = await animalService.create({ tag_number: 'B-1', name: 'Bella', type: 'cow', gender: 'female' });
+  await milkService.create({ animal_id: bella.id, date: today, session: 'morning', quantity: 12.5, unit: 'L' });
+  await milkService.create({ animal_id: bella.id, date: today, session: 'evening', quantity: 10, unit: 'L' });
+  await financeService.create({ date: today, type: 'income', category: 'milk_sale', amount: 5000, description: 'Milk sale' });
+  await financeService.create({ date: today, type: 'expense', category: 'feed', amount: 1500, description: 'Fodder' });
+  await healthService.create({
     animal_id: bella.id,
     date: today,
     type: 'treatment',
@@ -113,7 +113,7 @@ test('creates a valid, self-contained backup of the active database', () => {
     medicine: 'Amoxicillin',
     cost: 4000
   });
-  breedingService.create({
+  await breedingService.create({
     animal_id: bella.id,
     heat_date: addDays(today, -20),
     service_date: addDays(today, -18),
@@ -123,7 +123,7 @@ test('creates a valid, self-contained backup of the active database', () => {
     expected_calving_date: addDays(today, 265),
     expected_calving_estimated: 1
   });
-  const employee = employeeService.create({
+  const employee = await employeeService.create({
     name: 'Ali',
     role: 'Milker',
     joining_date: addDays(today, -100),
@@ -131,7 +131,7 @@ test('creates a valid, self-contained backup of the active database', () => {
     pay_type: 'monthly',
     salary: 35000
   });
-  paymentService.create({ employee_id: employee.id, date: today, type: 'salary', amount: 35000, description: 'Salary' });
+  await paymentService.create({ employee_id: employee.id, date: today, type: 'salary', amount: 35000, description: 'Salary' });
 
   backupPath = path.join(testRoot, 'manual', 'snapshot.db');
   backup.createBackup(backupPath);
@@ -151,18 +151,18 @@ test('creates a valid, self-contained backup of the active database', () => {
   assert.equal(probe.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 4);
   probe.close();
 
-  const totals = financeService.totals();
+  const totals = await financeService.totals();
   assert.equal(totals.income, 5000);
   assert.equal(totals.expenses, 40500);
   assert.equal(totals.net, totals.income - totals.expenses);
 });
 
-test('backup is a point-in-time snapshot and does not interrupt usage', () => {
-  const extra = animalService.create({ tag_number: 'B-2', type: 'buffalo', gender: 'female' });
-  milkService.create({ animal_id: extra.id, date: today, session: 'morning', quantity: 5, unit: 'L' });
-  financeService.create({ date: today, type: 'expense', category: 'electricity', amount: 777, description: 'Post-backup' });
+test('backup is a point-in-time snapshot and does not interrupt usage', async () => {
+  const extra = await animalService.create({ tag_number: 'B-2', type: 'buffalo', gender: 'female' });
+  await milkService.create({ animal_id: extra.id, date: today, session: 'morning', quantity: 5, unit: 'L' });
+  await financeService.create({ date: today, type: 'expense', category: 'electricity', amount: 777, description: 'Post-backup' });
 
-  assert.equal(financeService.totals().expenses, 40500 + 777, 'active database remains fully usable');
+  assert.equal((await financeService.totals()).expenses, 40500 + 777, 'active database remains fully usable');
 
   const probe = openReadonly(backupPath);
   assert.equal(probe.prepare('SELECT COUNT(*) AS n FROM animals').get().n, 1, 'post-backup animal is absent from the backup');

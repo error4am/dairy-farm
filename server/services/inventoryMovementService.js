@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -41,7 +41,7 @@ const LIST_SELECT = `
   JOIN inventory_items i ON i.id = m.item_id
 `;
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['m.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -68,32 +68,36 @@ function list(query = {}) {
   }
 
   const whereSql = where.join(' AND ');
-  const total = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM inventory_movements m JOIN inventory_items i ON i.id = m.item_id WHERE ${whereSql}`
+  const total = (
+    await db.get(
+      `SELECT CAST(COUNT(*) AS INTEGER) AS n FROM inventory_movements m JOIN inventory_items i ON i.id = m.item_id WHERE ${whereSql}`,
+      params
     )
-    .get(...params).n;
+  ).n;
 
   const limit = clampLimit(query.limit);
   const offset = Math.max(0, Number(query.offset) || 0);
 
-  const items = db
-    .prepare(`${LIST_SELECT} WHERE ${whereSql} ORDER BY m.date DESC, m.id DESC LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset);
+  const items = await db.all(`${LIST_SELECT} WHERE ${whereSql} ORDER BY m.date DESC, m.id DESC LIMIT ? OFFSET ?`, [
+    ...params,
+    limit,
+    offset
+  ]);
 
   return { items, total, limit, offset };
 }
 
-function get(id) {
-  const movement = db.prepare(`${LIST_SELECT} WHERE m.id = ? AND m.farm_id = ?`).get(id, FARM_ID);
+async function get(id) {
+  const movement = await db.get(`${LIST_SELECT} WHERE m.id = ? AND m.farm_id = ?`, [id, FARM_ID]);
   if (!movement) throw new HttpError(404, 'Stock movement not found.');
   return movement;
 }
 
-function assertItem(itemId) {
-  const item = db
-    .prepare('SELECT id, name, unit, active FROM inventory_items WHERE id = ? AND farm_id = ?')
-    .get(itemId, FARM_ID);
+async function assertItem(itemId) {
+  const item = await db.get('SELECT id, name, unit, active FROM inventory_items WHERE id = ? AND farm_id = ?', [
+    itemId,
+    FARM_ID
+  ]);
   if (!item) {
     throw new HttpError(400, 'Selected inventory item was not found.', {
       item_id: 'Selected inventory item was not found.'
@@ -138,9 +142,9 @@ function signFor(type, direction) {
   return direction === 'decrease' ? -1 : 1;
 }
 
-function prepare(body, existing) {
+async function prepare(body, existing) {
   const data = validate(body, RULES);
-  const item = assertItem(data.item_id);
+  const item = await assertItem(data.item_id);
 
   if (data.type === 'adjustment' && !data.notes) {
     fieldError('notes', 'A reason is required for adjustments.');
@@ -163,7 +167,7 @@ function prepare(body, existing) {
   const signed = round3(signFor(data.type, data.direction) * data.quantity);
   const sameItem = existing ? existing.item_id === data.item_id : false;
   const existingSigned = sameItem ? existing.quantity : 0;
-  const stockWithout = round3(inventoryService.currentStock(item.id) - existingSigned);
+  const stockWithout = round3((await inventoryService.currentStock(item.id)) - existingSigned);
   if (signed < 0 && stockWithout + signed < 0) {
     throw new HttpError(400, 'This movement would make the stock negative.', {
       quantity: `Only ${formatQuantity(stockWithout)} ${item.unit} available.`
@@ -188,39 +192,37 @@ function expenseDescription(item, data) {
   return data.supplier ? `${base} — ${data.supplier}` : base;
 }
 
-function insertExpense(item, data, amount) {
-  const info = db
-    .prepare(
-      `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
-       VALUES (?, NULL, ?, 'expense', 'feed', ?, ?)`
-    )
-    .run(FARM_ID, data.date, amount, expenseDescription(item, data));
+async function insertExpense(tx, item, data, amount) {
+  const info = await tx.run(
+    `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
+     VALUES (?, NULL, ?, 'expense', 'feed', ?, ?)`,
+    [FARM_ID, data.date, amount, expenseDescription(item, data)]
+  );
   return info.lastInsertRowid;
 }
 
-function updateExpense(transactionId, item, data, amount) {
-  db.prepare(
-    `UPDATE transactions SET date = ?, amount = ?, description = ?, updated_at = datetime('now')
-     WHERE id = ? AND farm_id = ?`
-  ).run(data.date, amount, expenseDescription(item, data), transactionId, FARM_ID);
+async function updateExpense(tx, transactionId, item, data, amount) {
+  await tx.run(
+    `UPDATE transactions SET date = ?, amount = ?, description = ?, updated_at = ?
+     WHERE id = ? AND farm_id = ?`,
+    [data.date, amount, expenseDescription(item, data), db.now(), transactionId, FARM_ID]
+  );
 }
 
-function create(body) {
-  const { data, item, signed, unitCost, totalCost } = prepare(body, null);
+async function create(body) {
+  const { data, item, signed, unitCost, totalCost } = await prepare(body, null);
 
-  const run = db.transaction(() => {
+  const id = await db.transaction(async (tx) => {
     let transactionId = null;
     if (data.type === 'purchase' && totalCost !== null && totalCost > 0) {
-      transactionId = insertExpense(item, data, totalCost);
+      transactionId = await insertExpense(tx, item, data, totalCost);
     }
 
-    const info = db
-      .prepare(
-        `INSERT INTO inventory_movements
-           (farm_id, item_id, date, type, quantity, unit, unit_cost, total_cost, supplier, notes, transaction_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+    const info = await tx.run(
+      `INSERT INTO inventory_movements
+         (farm_id, item_id, date, type, quantity, unit, unit_cost, total_cost, supplier, notes, transaction_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
         FARM_ID,
         data.item_id,
         data.date,
@@ -232,76 +234,77 @@ function create(body) {
         data.supplier,
         data.notes,
         transactionId
-      );
+      ]
+    );
     return info.lastInsertRowid;
   });
 
-  return get(run());
+  return get(id);
 }
 
-function update(id, body) {
-  const existing = db.prepare('SELECT * FROM inventory_movements WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function update(id, body) {
+  const existing = await db.get('SELECT * FROM inventory_movements WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Stock movement not found.');
 
-  const { data, item, signed, unitCost, totalCost } = prepare(body, existing);
+  const { data, item, signed, unitCost, totalCost } = await prepare(body, existing);
 
-  const run = db.transaction(() => {
+  await db.transaction(async (tx) => {
     let transactionId = existing.transaction_id;
     const wantsExpense = data.type === 'purchase' && totalCost !== null && totalCost > 0;
 
     if (wantsExpense) {
       if (transactionId) {
-        updateExpense(transactionId, item, data, totalCost);
+        await updateExpense(tx, transactionId, item, data, totalCost);
       } else {
-        transactionId = insertExpense(item, data, totalCost);
+        transactionId = await insertExpense(tx, item, data, totalCost);
       }
     } else if (transactionId) {
-      db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(transactionId, FARM_ID);
+      await tx.run('DELETE FROM transactions WHERE id = ? AND farm_id = ?', [transactionId, FARM_ID]);
       transactionId = null;
     }
 
-    db.prepare(
+    await tx.run(
       `UPDATE inventory_movements SET
          item_id = ?, date = ?, type = ?, quantity = ?, unit = ?, unit_cost = ?, total_cost = ?,
-         supplier = ?, notes = ?, transaction_id = ?, updated_at = datetime('now')
-       WHERE id = ? AND farm_id = ?`
-    ).run(
-      data.item_id,
-      data.date,
-      data.type,
-      signed,
-      data.unit,
-      unitCost,
-      totalCost,
-      data.supplier,
-      data.notes,
-      transactionId,
-      id,
-      FARM_ID
+         supplier = ?, notes = ?, transaction_id = ?, updated_at = ?
+       WHERE id = ? AND farm_id = ?`,
+      [
+        data.item_id,
+        data.date,
+        data.type,
+        signed,
+        data.unit,
+        unitCost,
+        totalCost,
+        data.supplier,
+        data.notes,
+        transactionId,
+        db.now(),
+        id,
+        FARM_ID
+      ]
     );
   });
 
-  run();
   return get(id);
 }
 
-function remove(id) {
-  const existing = db.prepare('SELECT * FROM inventory_movements WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function remove(id) {
+  const existing = await db.get('SELECT * FROM inventory_movements WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Stock movement not found.');
 
-  const stockWithout = round3(inventoryService.currentStock(existing.item_id) - existing.quantity);
+  const stockWithout = round3((await inventoryService.currentStock(existing.item_id)) - existing.quantity);
   if (stockWithout < 0) {
     throw new HttpError(400, 'Deleting this movement would make the stock negative.');
   }
 
-  const run = db.transaction(() => {
-    db.prepare('DELETE FROM inventory_movements WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+  await db.transaction(async (tx) => {
+    await tx.run('DELETE FROM inventory_movements WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
     if (existing.transaction_id) {
-      db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(existing.transaction_id, FARM_ID);
+      await tx.run('DELETE FROM transactions WHERE id = ? AND farm_id = ?', [existing.transaction_id, FARM_ID]);
     }
   });
 
-  run();
   return { ok: true };
 }
 

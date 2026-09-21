@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -22,7 +22,7 @@ const CURRENT_PREGNANCY_SELECT = `
   FROM (
     SELECT br.*, ROW_NUMBER() OVER (
       PARTITION BY br.animal_id
-      ORDER BY COALESCE(br.service_date, br.heat_date, date(br.created_at)) DESC, br.id DESC
+      ORDER BY COALESCE(br.service_date, br.heat_date, substr(br.created_at, 1, 10)) DESC, br.id DESC
     ) AS rn
     FROM breeding_records br
     WHERE br.farm_id = ? AND br.pregnancy_result != 'pending'
@@ -31,7 +31,7 @@ const CURRENT_PREGNANCY_SELECT = `
   WHERE b.rn = 1 AND b.pregnancy_result = 'pregnant' AND b.actual_calving_date IS NULL
 `;
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['b.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -66,9 +66,9 @@ function list(query = {}) {
   }
 
   const whereSql = where.join(' AND ');
-  const total = db
-    .prepare(`SELECT COUNT(*) AS n FROM breeding_records b WHERE ${whereSql}`)
-    .get(...params).n;
+  const total = (
+    await db.get(`SELECT CAST(COUNT(*) AS INTEGER) AS n FROM breeding_records b WHERE ${whereSql}`, params)
+  ).n;
 
   const limit = clampLimit(query.limit);
   const offset = Math.max(0, Number(query.offset) || 0);
@@ -79,47 +79,47 @@ function list(query = {}) {
         ? 'b.service_date ASC, b.id DESC'
         : 'COALESCE(b.service_date, b.heat_date) DESC, b.id DESC';
 
-  const items = db
-    .prepare(`${LIST_SELECT} WHERE ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset);
+  const items = await db.all(`${LIST_SELECT} WHERE ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`, [
+    ...params,
+    limit,
+    offset
+  ]);
 
   return { items, total, limit, offset };
 }
 
-function summary() {
+async function summary() {
   const today = todayLocal();
   const soon = addDays(today, 30);
 
-  const currentlyPregnant = db
-    .prepare(`${CURRENT_PREGNANCY_SELECT} ORDER BY b.expected_calving_date ASC`)
-    .all(FARM_ID);
+  const currentlyPregnant = await db.all(`${CURRENT_PREGNANCY_SELECT} ORDER BY b.expected_calving_date ASC`, [FARM_ID]);
 
   const calvingSoon = currentlyPregnant.filter(
     (r) => r.expected_calving_date && r.expected_calving_date <= soon
   );
 
-  const pendingChecks = db
-    .prepare(
-      `SELECT b.id, b.animal_id, b.heat_date, b.service_date, b.service_method, b.pregnancy_check_date,
-              b.sire_info, b.created_at, a.tag_number AS animal_tag, a.name AS animal_name
-       FROM breeding_records b
-       JOIN animals a ON a.id = b.animal_id
-       WHERE b.farm_id = ? AND b.pregnancy_result = 'pending' AND b.service_date IS NOT NULL
-       ORDER BY b.service_date ASC
-       LIMIT 50`
-    )
-    .all(FARM_ID);
+  const pendingChecks = await db.all(
+    `SELECT b.id, b.animal_id, b.heat_date, b.service_date, b.service_method, b.pregnancy_check_date,
+            b.sire_info, b.created_at, a.tag_number AS animal_tag, a.name AS animal_name
+     FROM breeding_records b
+     JOIN animals a ON a.id = b.animal_id
+     WHERE b.farm_id = ? AND b.pregnancy_result = 'pending' AND b.service_date IS NOT NULL
+     ORDER BY b.service_date ASC
+     LIMIT 50`,
+    [FARM_ID]
+  );
 
-  const eventsThisMonth = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM breeding_records
+  const eventsThisMonth = (
+    await db.get(
+      `SELECT CAST(COUNT(*) AS INTEGER) AS n FROM breeding_records
        WHERE farm_id = ?
          AND (substr(heat_date, 1, 7) = substr(?, 1, 7)
            OR substr(service_date, 1, 7) = substr(?, 1, 7)
            OR substr(pregnancy_check_date, 1, 7) = substr(?, 1, 7)
-           OR substr(actual_calving_date, 1, 7) = substr(?, 1, 7))`
+           OR substr(actual_calving_date, 1, 7) = substr(?, 1, 7))`,
+      [FARM_ID, today, today, today, today]
     )
-    .get(FARM_ID, today, today, today, today).n;
+  ).n;
 
   return {
     today,
@@ -133,18 +133,22 @@ function summary() {
   };
 }
 
-function get(id) {
-  const record = db.prepare(`${LIST_SELECT} WHERE b.id = ? AND b.farm_id = ?`).get(id, FARM_ID);
+async function get(id) {
+  const record = await db.get(`${LIST_SELECT} WHERE b.id = ? AND b.farm_id = ?`, [id, FARM_ID]);
   if (!record) throw new HttpError(404, 'Breeding record not found.');
   return record;
 }
 
-function currentForAnimal(animalId) {
-  return db.prepare(`${CURRENT_PREGNANCY_SELECT} AND b.animal_id = ?`).get(FARM_ID, animalId) || null;
+async function currentForAnimal(animalId) {
+  const record = await db.get(`${CURRENT_PREGNANCY_SELECT} AND b.animal_id = ?`, [FARM_ID, animalId]);
+  return record || null;
 }
 
-function assertAnimal(animalId) {
-  const animal = db.prepare('SELECT id, tag_number, name FROM animals WHERE id = ? AND farm_id = ?').get(animalId, FARM_ID);
+async function assertAnimal(animalId) {
+  const animal = await db.get('SELECT id, tag_number, name FROM animals WHERE id = ? AND farm_id = ?', [
+    animalId,
+    FARM_ID
+  ]);
   if (!animal) {
     throw new HttpError(400, 'Selected animal was not found.', { animal_id: 'Selected animal was not found.' });
   }
@@ -231,19 +235,17 @@ function validateRecord(body) {
   return data;
 }
 
-function create(body) {
+async function create(body) {
   const data = validateRecord(body);
-  assertAnimal(data.animal_id);
+  await assertAnimal(data.animal_id);
 
-  const info = db
-    .prepare(
-      `INSERT INTO breeding_records
-         (farm_id, animal_id, heat_date, service_date, service_method, sire_info,
-          pregnancy_check_date, pregnancy_result, expected_calving_date, expected_calving_estimated,
-          actual_calving_date, calving_outcome, offspring_count, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  const info = await db.run(
+    `INSERT INTO breeding_records
+       (farm_id, animal_id, heat_date, service_date, service_method, sire_info,
+        pregnancy_check_date, pregnancy_result, expected_calving_date, expected_calving_estimated,
+        actual_calving_date, calving_outcome, offspring_count, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
       FARM_ID,
       data.animal_id,
       data.heat_date,
@@ -258,48 +260,51 @@ function create(body) {
       data.calving_outcome,
       data.offspring_count,
       data.notes
-    );
+    ]
+  );
 
   return get(info.lastInsertRowid);
 }
 
-function update(id, body) {
-  const existing = db.prepare('SELECT * FROM breeding_records WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function update(id, body) {
+  const existing = await db.get('SELECT * FROM breeding_records WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Breeding record not found.');
 
   const data = validateRecord(body);
-  assertAnimal(data.animal_id);
+  await assertAnimal(data.animal_id);
 
-  db.prepare(
+  await db.run(
     `UPDATE breeding_records SET
        animal_id = ?, heat_date = ?, service_date = ?, service_method = ?, sire_info = ?,
        pregnancy_check_date = ?, pregnancy_result = ?, expected_calving_date = ?, expected_calving_estimated = ?,
        actual_calving_date = ?, calving_outcome = ?, offspring_count = ?, notes = ?,
-       updated_at = datetime('now')
-     WHERE id = ? AND farm_id = ?`
-  ).run(
-    data.animal_id,
-    data.heat_date,
-    data.service_date,
-    data.service_method,
-    data.sire_info,
-    data.pregnancy_check_date,
-    data.pregnancy_result,
-    data.expected_calving_date,
-    data.expected_calving_estimated,
-    data.actual_calving_date,
-    data.calving_outcome,
-    data.offspring_count,
-    data.notes,
-    id,
-    FARM_ID
+       updated_at = ?
+     WHERE id = ? AND farm_id = ?`,
+    [
+      data.animal_id,
+      data.heat_date,
+      data.service_date,
+      data.service_method,
+      data.sire_info,
+      data.pregnancy_check_date,
+      data.pregnancy_result,
+      data.expected_calving_date,
+      data.expected_calving_estimated,
+      data.actual_calving_date,
+      data.calving_outcome,
+      data.offspring_count,
+      data.notes,
+      db.now(),
+      id,
+      FARM_ID
+    ]
   );
 
   return get(id);
 }
 
-function remove(id) {
-  const info = db.prepare('DELETE FROM breeding_records WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+async function remove(id) {
+  const info = await db.run('DELETE FROM breeding_records WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (info.changes === 0) throw new HttpError(404, 'Breeding record not found.');
   return { ok: true };
 }

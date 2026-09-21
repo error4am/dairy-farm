@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -30,7 +30,7 @@ const LIST_SELECT = `
   LEFT JOIN transactions t ON t.id = h.transaction_id
 `;
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['h.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -65,9 +65,12 @@ function list(query = {}) {
   }
 
   const whereSql = where.join(' AND ');
-  const total = db
-    .prepare(`SELECT COUNT(*) AS n FROM health_records h JOIN animals a ON a.id = h.animal_id WHERE ${whereSql}`)
-    .get(...params).n;
+  const total = (
+    await db.get(
+      `SELECT CAST(COUNT(*) AS INTEGER) AS n FROM health_records h JOIN animals a ON a.id = h.animal_id WHERE ${whereSql}`,
+      params
+    )
+  ).n;
 
   const limit = clampLimit(query.limit);
   const offset = Math.max(0, Number(query.offset) || 0);
@@ -78,46 +81,50 @@ function list(query = {}) {
         ? 'h.withdrawal_until ASC, h.date DESC'
         : 'h.date DESC, h.id DESC';
 
-  const items = db
-    .prepare(`${LIST_SELECT} WHERE ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset);
+  const items = await db.all(`${LIST_SELECT} WHERE ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`, [
+    ...params,
+    limit,
+    offset
+  ]);
 
   return { items, total, limit, offset };
 }
 
-function summary() {
+async function summary() {
   const today = todayLocal();
   const soon = addDays(today, 30);
 
-  const eventsThisMonth = db
-    .prepare("SELECT COUNT(*) AS n FROM health_records WHERE farm_id = ? AND substr(date, 1, 7) = substr(?, 1, 7)")
-    .get(FARM_ID, today).n;
-
-  const byType = db
-    .prepare('SELECT type, COUNT(*) AS count FROM health_records WHERE farm_id = ? GROUP BY type ORDER BY count DESC')
-    .all(FARM_ID);
-
-  const withdrawals = db
-    .prepare(
-      `SELECT h.animal_id, a.tag_number, a.name, MAX(h.withdrawal_until) AS withdrawal_until
-       FROM health_records h
-       JOIN animals a ON a.id = h.animal_id
-       WHERE h.farm_id = ? AND h.withdrawal_until IS NOT NULL AND h.withdrawal_until >= ?
-       GROUP BY h.animal_id
-       ORDER BY withdrawal_until ASC`
+  const eventsThisMonth = (
+    await db.get(
+      "SELECT CAST(COUNT(*) AS INTEGER) AS n FROM health_records WHERE farm_id = ? AND substr(date, 1, 7) = substr(?, 1, 7)",
+      [FARM_ID, today]
     )
-    .all(FARM_ID, today);
+  ).n;
 
-  const dueSoon = db
-    .prepare(
-      `SELECT h.id, h.animal_id, a.tag_number, a.name, h.type, h.condition, h.next_due_date
-       FROM health_records h
-       JOIN animals a ON a.id = h.animal_id
-       WHERE h.farm_id = ? AND h.next_due_date IS NOT NULL AND h.next_due_date <= ?
-       ORDER BY h.next_due_date ASC
-       LIMIT 50`
-    )
-    .all(FARM_ID, soon);
+  const byType = await db.all(
+    'SELECT type, CAST(COUNT(*) AS INTEGER) AS count FROM health_records WHERE farm_id = ? GROUP BY type ORDER BY count DESC',
+    [FARM_ID]
+  );
+
+  const withdrawals = await db.all(
+    `SELECT h.animal_id, a.tag_number, a.name, MAX(h.withdrawal_until) AS withdrawal_until
+     FROM health_records h
+     JOIN animals a ON a.id = h.animal_id
+     WHERE h.farm_id = ? AND h.withdrawal_until IS NOT NULL AND h.withdrawal_until >= ?
+     GROUP BY h.animal_id, a.tag_number, a.name
+     ORDER BY withdrawal_until ASC`,
+    [FARM_ID, today]
+  );
+
+  const dueSoon = await db.all(
+    `SELECT h.id, h.animal_id, a.tag_number, a.name, h.type, h.condition, h.next_due_date
+     FROM health_records h
+     JOIN animals a ON a.id = h.animal_id
+     WHERE h.farm_id = ? AND h.next_due_date IS NOT NULL AND h.next_due_date <= ?
+     ORDER BY h.next_due_date ASC
+     LIMIT 50`,
+    [FARM_ID, soon]
+  );
 
   return {
     today,
@@ -130,24 +137,26 @@ function summary() {
   };
 }
 
-function get(id) {
-  const record = db.prepare(`${LIST_SELECT} WHERE h.id = ? AND h.farm_id = ?`).get(id, FARM_ID);
+async function get(id) {
+  const record = await db.get(`${LIST_SELECT} WHERE h.id = ? AND h.farm_id = ?`, [id, FARM_ID]);
   if (!record) throw new HttpError(404, 'Health record not found.');
   return record;
 }
 
-function activeWithdrawal(animalId, date) {
-  const row = db
-    .prepare(
-      `SELECT MAX(withdrawal_until) AS until FROM health_records
-       WHERE farm_id = ? AND animal_id = ? AND withdrawal_until IS NOT NULL AND date <= ? AND withdrawal_until >= ?`
-    )
-    .get(FARM_ID, animalId, date, date);
+async function activeWithdrawal(animalId, date) {
+  const row = await db.get(
+    `SELECT MAX(withdrawal_until) AS until FROM health_records
+     WHERE farm_id = ? AND animal_id = ? AND withdrawal_until IS NOT NULL AND date <= ? AND withdrawal_until >= ?`,
+    [FARM_ID, animalId, date, date]
+  );
   return row.until || null;
 }
 
-function assertAnimal(animalId) {
-  const animal = db.prepare('SELECT id, tag_number, name, status FROM animals WHERE id = ? AND farm_id = ?').get(animalId, FARM_ID);
+async function assertAnimal(animalId) {
+  const animal = await db.get('SELECT id, tag_number, name, status FROM animals WHERE id = ? AND farm_id = ?', [
+    animalId,
+    FARM_ID
+  ]);
   if (!animal) {
     throw new HttpError(400, 'Selected animal was not found.', { animal_id: 'Selected animal was not found.' });
   }
@@ -188,40 +197,38 @@ function expenseDescription(data) {
   return `Health: ${label}`;
 }
 
-function insertExpense(data, cost) {
-  const info = db
-    .prepare(
-      `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
-       VALUES (?, ?, ?, 'expense', 'medicine', ?, ?)`
-    )
-    .run(FARM_ID, data.animal_id, data.date, cost, expenseDescription(data));
+async function insertExpense(tx, data, cost) {
+  const info = await tx.run(
+    `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
+     VALUES (?, ?, ?, 'expense', 'medicine', ?, ?)`,
+    [FARM_ID, data.animal_id, data.date, cost, expenseDescription(data)]
+  );
   return info.lastInsertRowid;
 }
 
-function updateExpense(transactionId, data, cost) {
-  db.prepare(
-    `UPDATE transactions SET animal_id = ?, date = ?, amount = ?, description = ?, updated_at = datetime('now')
-     WHERE id = ? AND farm_id = ?`
-  ).run(data.animal_id, data.date, cost, expenseDescription(data), transactionId, FARM_ID);
+async function updateExpense(tx, transactionId, data, cost) {
+  await tx.run(
+    `UPDATE transactions SET animal_id = ?, date = ?, amount = ?, description = ?, updated_at = ?
+     WHERE id = ? AND farm_id = ?`,
+    [data.animal_id, data.date, cost, expenseDescription(data), db.now(), transactionId, FARM_ID]
+  );
 }
 
-function create(body) {
+async function create(body) {
   const data = validateRecord(body);
-  assertAnimal(data.animal_id);
+  await assertAnimal(data.animal_id);
   const cost = data.cost === null ? 0 : data.cost;
 
-  const run = db.transaction(() => {
+  const id = await db.transaction(async (tx) => {
     let transactionId = null;
-    if (cost > 0) transactionId = insertExpense(data, cost);
+    if (cost > 0) transactionId = await insertExpense(tx, data, cost);
 
-    const info = db
-      .prepare(
-        `INSERT INTO health_records
-           (farm_id, animal_id, date, type, condition, medicine, dosage, vet_name,
-            withdrawal_until, next_due_date, notes, transaction_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+    const info = await tx.run(
+      `INSERT INTO health_records
+         (farm_id, animal_id, date, type, condition, medicine, dosage, vet_name,
+          withdrawal_until, next_due_date, notes, transaction_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
         FARM_ID,
         data.animal_id,
         data.date,
@@ -234,73 +241,74 @@ function create(body) {
         data.next_due_date,
         data.notes,
         transactionId
-      );
+      ]
+    );
     return info.lastInsertRowid;
   });
 
-  return get(run());
+  return get(id);
 }
 
-function update(id, body) {
-  const existing = db.prepare('SELECT * FROM health_records WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function update(id, body) {
+  const existing = await db.get('SELECT * FROM health_records WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Health record not found.');
 
   const data = validateRecord(body);
-  assertAnimal(data.animal_id);
+  await assertAnimal(data.animal_id);
   const cost = data.cost === null ? 0 : data.cost;
 
-  const run = db.transaction(() => {
+  await db.transaction(async (tx) => {
     let transactionId = existing.transaction_id;
 
     if (cost > 0) {
       if (transactionId) {
-        updateExpense(transactionId, data, cost);
+        await updateExpense(tx, transactionId, data, cost);
       } else {
-        transactionId = insertExpense(data, cost);
+        transactionId = await insertExpense(tx, data, cost);
       }
     } else if (transactionId) {
-      db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(transactionId, FARM_ID);
+      await tx.run('DELETE FROM transactions WHERE id = ? AND farm_id = ?', [transactionId, FARM_ID]);
       transactionId = null;
     }
 
-    db.prepare(
+    await tx.run(
       `UPDATE health_records SET
          animal_id = ?, date = ?, type = ?, condition = ?, medicine = ?, dosage = ?, vet_name = ?,
-         withdrawal_until = ?, next_due_date = ?, notes = ?, transaction_id = ?, updated_at = datetime('now')
-       WHERE id = ? AND farm_id = ?`
-    ).run(
-      data.animal_id,
-      data.date,
-      data.type,
-      data.condition,
-      data.medicine,
-      data.dosage,
-      data.vet_name,
-      data.withdrawal_until,
-      data.next_due_date,
-      data.notes,
-      transactionId,
-      id,
-      FARM_ID
+         withdrawal_until = ?, next_due_date = ?, notes = ?, transaction_id = ?, updated_at = ?
+       WHERE id = ? AND farm_id = ?`,
+      [
+        data.animal_id,
+        data.date,
+        data.type,
+        data.condition,
+        data.medicine,
+        data.dosage,
+        data.vet_name,
+        data.withdrawal_until,
+        data.next_due_date,
+        data.notes,
+        transactionId,
+        db.now(),
+        id,
+        FARM_ID
+      ]
     );
   });
 
-  run();
   return get(id);
 }
 
-function remove(id) {
-  const existing = db.prepare('SELECT * FROM health_records WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function remove(id) {
+  const existing = await db.get('SELECT * FROM health_records WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Health record not found.');
 
-  const run = db.transaction(() => {
-    db.prepare('DELETE FROM health_records WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+  await db.transaction(async (tx) => {
+    await tx.run('DELETE FROM health_records WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
     if (existing.transaction_id) {
-      db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(existing.transaction_id, FARM_ID);
+      await tx.run('DELETE FROM transactions WHERE id = ? AND farm_id = ?', [existing.transaction_id, FARM_ID]);
     }
   });
 
-  run();
   return { ok: true };
 }
 

@@ -1,4 +1,4 @@
-const db = require('../db/connection');
+const db = require('../db');
 const { FARM_ID } = require('../config');
 const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
@@ -19,30 +19,30 @@ const LIST_JOINS = `
   LEFT JOIN inventory_movements im ON im.transaction_id = t.id
 `;
 
-function findLink(transactionId) {
-  const employeeLink = db
-    .prepare(
-      `SELECT ep.id AS payment_id, ep.employee_id, e.name AS employee_name
-       FROM employee_payments ep
-       JOIN employees e ON e.id = ep.employee_id
-       WHERE ep.transaction_id = ?`
-    )
-    .get(transactionId);
+async function findLink(transactionId) {
+  const employeeLink = await db.get(
+    `SELECT ep.id AS payment_id, ep.employee_id, e.name AS employee_name
+     FROM employee_payments ep
+     JOIN employees e ON e.id = ep.employee_id
+     WHERE ep.transaction_id = ?`,
+    [transactionId]
+  );
   if (employeeLink) return { kind: 'employee_payment', ...employeeLink };
 
-  const healthLink = db.prepare('SELECT id FROM health_records WHERE transaction_id = ?').get(transactionId);
+  const healthLink = await db.get('SELECT id FROM health_records WHERE transaction_id = ?', [transactionId]);
   if (healthLink) return { kind: 'health_record', health_record_id: healthLink.id };
 
-  const inventoryLink = db
-    .prepare('SELECT id AS movement_id, item_id FROM inventory_movements WHERE transaction_id = ?')
-    .get(transactionId);
+  const inventoryLink = await db.get(
+    'SELECT id AS movement_id, item_id FROM inventory_movements WHERE transaction_id = ?',
+    [transactionId]
+  );
   if (inventoryLink) return { kind: 'inventory_movement', ...inventoryLink };
 
   return null;
 }
 
-function assertNotLinked(transactionId) {
-  const link = findLink(transactionId);
+async function assertNotLinked(transactionId) {
+  const link = await findLink(transactionId);
   if (!link) return;
   if (link.kind === 'employee_payment') {
     throw new HttpError(
@@ -59,7 +59,7 @@ function assertNotLinked(transactionId) {
   throw new HttpError(409, 'This expense is linked to a health record. Edit or delete it from the Health module.');
 }
 
-function list(query = {}) {
+async function list(query = {}) {
   const where = ['t.farm_id = ?'];
   const params = [FARM_ID];
 
@@ -90,31 +90,30 @@ function list(query = {}) {
   }
 
   const whereSql = where.join(' AND ');
-  const total = db
-    .prepare(`SELECT COUNT(*) AS n FROM transactions t ${LIST_JOINS} WHERE ${whereSql}`)
-    .get(...params).n;
+  const total = (
+    await db.get(`SELECT CAST(COUNT(*) AS INTEGER) AS n FROM transactions t ${LIST_JOINS} WHERE ${whereSql}`, params)
+  ).n;
 
   const limit = clampLimit(query.limit);
   const offset = Math.max(0, Number(query.offset) || 0);
 
-  const items = db
-    .prepare(
-      `SELECT t.*, a.tag_number AS animal_tag, a.name AS animal_name,
-              e.id AS employee_id, e.name AS employee_name, e.employee_id AS employee_code,
-              ep.type AS payment_type, hr.id AS health_record_id,
-              im.id AS inventory_movement_id, im.item_id AS inventory_item_id
-       FROM transactions t
-       ${LIST_JOINS}
-       WHERE ${whereSql}
-       ORDER BY t.date DESC, t.id DESC
-       LIMIT ? OFFSET ?`
-    )
-    .all(...params, limit, offset);
+  const items = await db.all(
+    `SELECT t.*, a.tag_number AS animal_tag, a.name AS animal_name,
+            e.id AS employee_id, e.name AS employee_name, e.employee_id AS employee_code,
+            ep.type AS payment_type, hr.id AS health_record_id,
+            im.id AS inventory_movement_id, im.item_id AS inventory_item_id
+     FROM transactions t
+     ${LIST_JOINS}
+     WHERE ${whereSql}
+     ORDER BY t.date DESC, t.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
 
   return { items, total, limit, offset };
 }
 
-function totals(query = {}) {
+async function totals(query = {}) {
   const where = ['farm_id = ?'];
   const params = [FARM_ID];
 
@@ -135,15 +134,14 @@ function totals(query = {}) {
     params.push(query.category);
   }
 
-  const row = db
-    .prepare(
-      `SELECT
-         COALESCE(SUM(CASE WHEN type = 'income' THEN amount END), 0) AS income,
-         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount END), 0) AS expenses,
-         COUNT(*) AS count
-       FROM transactions WHERE ${where.join(' AND ')}`
-    )
-    .get(...params);
+  const row = await db.get(
+    `SELECT
+       COALESCE(SUM(CASE WHEN type = 'income' THEN amount END), 0) AS income,
+       COALESCE(SUM(CASE WHEN type = 'expense' THEN amount END), 0) AS expenses,
+       CAST(COUNT(*) AS INTEGER) AS count
+     FROM transactions WHERE ${where.join(' AND ')}`,
+    params
+  );
 
   return {
     from: query.from || null,
@@ -155,9 +153,9 @@ function totals(query = {}) {
   };
 }
 
-function summary(query = {}) {
-  const range = totals(query);
-  const allTime = totals();
+async function summary(query = {}) {
+  const range = await totals(query);
+  const allTime = await totals();
 
   const where = ['farm_id = ?'];
   const params = [FARM_ID];
@@ -175,21 +173,20 @@ function summary(query = {}) {
     params.push(Number(query.animal_id));
   }
 
-  const byCategory = db
-    .prepare(
-      `SELECT type, category, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS count
-       FROM transactions WHERE ${where.join(' AND ')}
-       GROUP BY type, category
-       ORDER BY amount DESC`
-    )
-    .all(...params);
+  const byCategory = await db.all(
+    `SELECT type, category, COALESCE(SUM(amount), 0) AS amount, CAST(COUNT(*) AS INTEGER) AS count
+     FROM transactions WHERE ${where.join(' AND ')}
+     GROUP BY type, category
+     ORDER BY amount DESC`,
+    params
+  );
 
   return { range, all_time: allTime, by_category: byCategory };
 }
 
-function assertAnimal(animalId) {
+async function assertAnimal(animalId) {
   if (animalId === null || animalId === undefined) return null;
-  const animal = db.prepare('SELECT id FROM animals WHERE id = ? AND farm_id = ?').get(animalId, FARM_ID);
+  const animal = await db.get('SELECT id FROM animals WHERE id = ? AND farm_id = ?', [animalId, FARM_ID]);
   if (!animal) {
     throw new HttpError(400, 'Selected animal was not found.', { animal_id: 'Selected animal was not found.' });
   }
@@ -210,29 +207,28 @@ const RULES = {
   animal_id: { type: 'integer', label: 'Animal' }
 };
 
-function create(body) {
+async function create(body) {
   const data = validate(body, RULES);
   if (!isValidCategory(data.type, data.category)) {
     throw new HttpError(400, 'Please check the highlighted fields.', {
       category: 'Category does not match the transaction type.'
     });
   }
-  assertAnimal(data.animal_id);
+  await assertAnimal(data.animal_id);
 
-  const info = db
-    .prepare(
-      `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(FARM_ID, data.animal_id, data.date, data.type, data.category, data.amount, data.description);
-  return db.prepare('SELECT * FROM transactions WHERE id = ?').get(info.lastInsertRowid);
+  const info = await db.run(
+    `INSERT INTO transactions (farm_id, animal_id, date, type, category, amount, description)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [FARM_ID, data.animal_id, data.date, data.type, data.category, data.amount, data.description]
+  );
+  return db.get('SELECT * FROM transactions WHERE id = ?', [info.lastInsertRowid]);
 }
 
-function update(id, body) {
-  const existing = db.prepare('SELECT * FROM transactions WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function update(id, body) {
+  const existing = await db.get('SELECT * FROM transactions WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Transaction not found.');
 
-  assertNotLinked(id);
+  await assertNotLinked(id);
 
   const data = validate(body, RULES);
   if (!isValidCategory(data.type, data.category)) {
@@ -240,25 +236,26 @@ function update(id, body) {
       category: 'Category does not match the transaction type.'
     });
   }
-  assertAnimal(data.animal_id);
+  await assertAnimal(data.animal_id);
 
-  db.prepare(
+  await db.run(
     `UPDATE transactions SET
        animal_id = ?, date = ?, type = ?, category = ?, amount = ?, description = ?,
-       updated_at = datetime('now')
-     WHERE id = ? AND farm_id = ?`
-  ).run(data.animal_id, data.date, data.type, data.category, data.amount, data.description, id, FARM_ID);
+       updated_at = ?
+     WHERE id = ? AND farm_id = ?`,
+    [data.animal_id, data.date, data.type, data.category, data.amount, data.description, db.now(), id, FARM_ID]
+  );
 
-  return db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+  return db.get('SELECT * FROM transactions WHERE id = ?', [id]);
 }
 
-function remove(id) {
-  const existing = db.prepare('SELECT id FROM transactions WHERE id = ? AND farm_id = ?').get(id, FARM_ID);
+async function remove(id) {
+  const existing = await db.get('SELECT id FROM transactions WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   if (!existing) throw new HttpError(404, 'Transaction not found.');
 
-  assertNotLinked(id);
+  await assertNotLinked(id);
 
-  db.prepare('DELETE FROM transactions WHERE id = ? AND farm_id = ?').run(id, FARM_ID);
+  await db.run('DELETE FROM transactions WHERE id = ? AND farm_id = ?', [id, FARM_ID]);
   return { ok: true };
 }
 

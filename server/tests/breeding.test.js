@@ -5,7 +5,7 @@ const fs = require('fs');
 const dbPath = path.join(os.tmpdir(), `dairy-breeding-test-${process.pid}-${Date.now()}.db`);
 process.env.DB_PATH = dbPath;
 
-const { test, after } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
 require('../db/seed')();
@@ -18,15 +18,21 @@ const { todayLocal, addDays } = require('../utils/date');
 
 const today = todayLocal();
 
-const animalA = animalService.create({ tag_number: 'B-1', type: 'cow', gender: 'female' });
-const animalB = animalService.create({ tag_number: 'B-2', type: 'buffalo', gender: 'female' });
-const animalC = animalService.create({ tag_number: 'B-3', type: 'cow', gender: 'female' });
+let animalA;
+let animalB;
+let animalC;
+
+before(async () => {
+  animalA = await animalService.create({ tag_number: 'B-1', type: 'cow', gender: 'female' });
+  animalB = await animalService.create({ tag_number: 'B-2', type: 'buffalo', gender: 'female' });
+  animalC = await animalService.create({ tag_number: 'B-3', type: 'cow', gender: 'female' });
+});
 
 let heatOnlyId = null;
 let pregnantAttemptId = null;
 
-test('creates a heat-only record without pregnancy information', () => {
-  const record = breedingService.create({ animal_id: animalA.id, heat_date: addDays(today, -30) });
+test('creates a heat-only record without pregnancy information', async () => {
+  const record = await breedingService.create({ animal_id: animalA.id, heat_date: addDays(today, -30) });
   heatOnlyId = record.id;
 
   assert.equal(record.heat_date, addDays(today, -30));
@@ -34,11 +40,11 @@ test('creates a heat-only record without pregnancy information', () => {
   assert.equal(record.pregnancy_result, 'pending');
   assert.equal(record.calving_outcome, 'pending');
   assert.equal(record.expected_calving_date, null);
-  assert.equal(breedingService.currentForAnimal(animalA.id), null, 'pending record is not a pregnancy');
+  assert.equal(await breedingService.currentForAnimal(animalA.id), null, 'pending record is not a pregnancy');
 });
 
-test('multiple breeding attempts stay in history and the latest completed result decides pregnancy', () => {
-  const failed = breedingService.update(heatOnlyId, {
+test('multiple breeding attempts stay in history and the latest completed result decides pregnancy', async () => {
+  const failed = await breedingService.update(heatOnlyId, {
     animal_id: animalA.id,
     heat_date: addDays(today, -30),
     service_date: addDays(today, -28),
@@ -48,7 +54,7 @@ test('multiple breeding attempts stay in history and the latest completed result
     pregnancy_result: 'not_pregnant'
   });
 
-  const pregnant = breedingService.create({
+  const pregnant = await breedingService.create({
     animal_id: animalA.id,
     heat_date: addDays(today, -8),
     service_date: addDays(today, -6),
@@ -61,20 +67,20 @@ test('multiple breeding attempts stay in history and the latest completed result
   });
   pregnantAttemptId = pregnant.id;
 
-  const list = breedingService.list({ animal_id: animalA.id });
+  const list = await breedingService.list({ animal_id: animalA.id });
   assert.equal(list.total, 2, 'both attempts remain in history');
   assert.ok(list.items.some((r) => r.id === failed.id && r.pregnancy_result === 'not_pregnant'));
   assert.ok(list.items.some((r) => r.id === pregnantAttemptId && r.pregnancy_result === 'pregnant'));
 
-  const current = breedingService.currentForAnimal(animalA.id);
+  const current = await breedingService.currentForAnimal(animalA.id);
   assert.ok(current, 'animal is currently pregnant');
   assert.equal(current.id, pregnantAttemptId, 'the latest completed check decides status');
   assert.equal(current.expected_calving_date, addDays(today, 277));
   assert.equal(current.expected_calving_estimated, 1, 'estimated flag is stored');
 });
 
-test('a newer pending attempt does not erase a confirmed pregnancy', () => {
-  breedingService.create({
+test('a newer pending attempt does not erase a confirmed pregnancy', async () => {
+  await breedingService.create({
     animal_id: animalB.id,
     heat_date: addDays(today, -10),
     service_date: addDays(today, -8),
@@ -82,16 +88,16 @@ test('a newer pending attempt does not erase a confirmed pregnancy', () => {
     pregnancy_result: 'pending'
   });
 
-  const summary = breedingService.summary();
+  const summary = await breedingService.summary();
   assert.equal(summary.pending_checks_count, 1, 'pending check is listed');
   assert.equal(summary.pending_checks[0].animal_tag, 'B-2');
 
-  const list = breedingService.list({ pending_checks: '1' });
+  const list = await breedingService.list({ pending_checks: '1' });
   assert.equal(list.total, 1);
 });
 
-test('not-pregnant result is not a current pregnancy and remains in history', () => {
-  const record = breedingService.create({
+test('not-pregnant result is not a current pregnancy and remains in history', async () => {
+  const record = await breedingService.create({
     animal_id: animalC.id,
     heat_date: addDays(today, -25),
     service_date: addDays(today, -23),
@@ -100,14 +106,14 @@ test('not-pregnant result is not a current pregnancy and remains in history', ()
     pregnancy_result: 'not_pregnant'
   });
 
-  assert.equal(breedingService.currentForAnimal(animalC.id), null);
-  const summary = breedingService.summary();
+  assert.equal(await breedingService.currentForAnimal(animalC.id), null);
+  const summary = await breedingService.summary();
   assert.ok(!summary.currently_pregnant.some((r) => r.animal_id === animalC.id));
-  assert.equal(breedingService.get(record.id).pregnancy_result, 'not_pregnant');
+  assert.equal((await breedingService.get(record.id)).pregnancy_result, 'not_pregnant');
 });
 
-test('confirmed pregnancy appears with its expected calving date', () => {
-  const summary = breedingService.summary();
+test('confirmed pregnancy appears with its expected calving date', async () => {
+  const summary = await breedingService.summary();
   const entry = summary.currently_pregnant.find((r) => r.animal_id === animalA.id);
 
   assert.ok(entry, 'animal A is in the pregnant list');
@@ -115,8 +121,8 @@ test('confirmed pregnancy appears with its expected calving date', () => {
   assert.equal(summary.currently_pregnant_count, 1);
 });
 
-test('upcoming calving includes overdue and near dates, excludes far dates', () => {
-  breedingService.create({
+test('upcoming calving includes overdue and near dates, excludes far dates', async () => {
+  await breedingService.create({
     animal_id: animalB.id,
     heat_date: addDays(today, -50),
     service_date: addDays(today, -48),
@@ -127,21 +133,21 @@ test('upcoming calving includes overdue and near dates, excludes far dates', () 
     expected_calving_estimated: false
   });
 
-  const summary = breedingService.summary();
+  const summary = await breedingService.summary();
   assert.equal(summary.calving_soon_count, 1, 'overdue pregnancy is flagged');
   assert.equal(summary.calving_soon[0].animal_tag, 'B-2');
   assert.equal(summary.currently_pregnant_count, 2, 'both A and B are pregnant');
 
-  const due = breedingService.list({ due: 'soon' });
+  const due = await breedingService.list({ due: 'soon' });
   assert.equal(due.total, 1);
   assert.equal(due.items[0].animal_tag, 'B-2');
 });
 
-test('recording actual calving completes the cycle and clears current pregnancy', () => {
-  const bRecords = breedingService.list({ animal_id: animalB.id, pregnancy_result: 'pregnant' });
+test('recording actual calving completes the cycle and clears current pregnancy', async () => {
+  const bRecords = await breedingService.list({ animal_id: animalB.id, pregnancy_result: 'pregnant' });
   const calvingRecord = bRecords.items[0];
 
-  const updated = breedingService.update(calvingRecord.id, {
+  const updated = await breedingService.update(calvingRecord.id, {
     animal_id: animalB.id,
     heat_date: addDays(today, -50),
     service_date: addDays(today, -48),
@@ -158,50 +164,50 @@ test('recording actual calving completes the cycle and clears current pregnancy'
   assert.equal(updated.calving_outcome, 'successful');
   assert.equal(updated.offspring_count, 2);
 
-  assert.equal(breedingService.currentForAnimal(animalB.id), null, 'calved animal is no longer pregnant');
+  assert.equal(await breedingService.currentForAnimal(animalB.id), null, 'calved animal is no longer pregnant');
 
-  const summary = breedingService.summary();
+  const summary = await breedingService.summary();
   assert.equal(summary.currently_pregnant_count, 1);
   assert.equal(summary.calving_soon_count, 0);
-  assert.equal(breedingService.list({ due: 'soon' }).total, 0);
+  assert.equal((await breedingService.list({ due: 'soon' })).total, 0);
 });
 
-test('history stays intact after all lifecycle changes', () => {
-  const all = breedingService.list({});
+test('history stays intact after all lifecycle changes', async () => {
+  const all = await breedingService.list({});
   assert.equal(all.total, 5, 'A:2, B:2, C:1 records all preserved');
 
-  const bHistory = breedingService.list({ animal_id: animalB.id });
+  const bHistory = await breedingService.list({ animal_id: animalB.id });
   assert.equal(bHistory.total, 2, 'calved attempt and pending attempt both kept');
   assert.ok(bHistory.items.some((r) => r.actual_calving_date === today));
   assert.ok(bHistory.items.some((r) => r.pregnancy_result === 'pending'));
 });
 
-test('filters by result and service method work', () => {
-  assert.equal(breedingService.list({ pregnancy_result: 'pregnant' }).total, 2, 'A pregnant + B calved');
-  assert.equal(breedingService.list({ service_method: 'artificial_insemination' }).total, 2);
-  assert.equal(breedingService.list({ service_method: 'natural' }).total, 3);
-  assert.equal(breedingService.list({ animal_id: animalC.id }).total, 1);
+test('filters by result and service method work', async () => {
+  assert.equal((await breedingService.list({ pregnancy_result: 'pregnant' })).total, 2, 'A pregnant + B calved');
+  assert.equal((await breedingService.list({ service_method: 'artificial_insemination' })).total, 2);
+  assert.equal((await breedingService.list({ service_method: 'natural' })).total, 3);
+  assert.equal((await breedingService.list({ animal_id: animalC.id })).total, 1);
 });
 
-test('invalid or inconsistent dates are rejected', () => {
+test('invalid or inconsistent dates are rejected', async () => {
   const base = { animal_id: animalC.id };
 
-  assert.throws(
+  await assert.rejects(
     () => breedingService.create({ ...base }),
     (err) => err.status === 400 && Boolean(err.details.heat_date),
     'record needs a heat or service date'
   );
-  assert.throws(
+  await assert.rejects(
     () => breedingService.create({ ...base, heat_date: today, service_date: addDays(today, -1), service_method: 'natural' }),
     (err) => err.status === 400 && Boolean(err.details.heat_date),
     'heat cannot be after service'
   );
-  assert.throws(
+  await assert.rejects(
     () => breedingService.create({ ...base, service_date: today }),
     (err) => err.status === 400 && Boolean(err.details.service_method),
     'service requires a method'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -212,7 +218,7 @@ test('invalid or inconsistent dates are rejected', () => {
     (err) => err.status === 400 && Boolean(err.details.pregnancy_check_date),
     'check cannot be before service'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -223,7 +229,7 @@ test('invalid or inconsistent dates are rejected', () => {
     (err) => err.status === 400 && Boolean(err.details.expected_calving_date),
     'expected calving must be after service'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -235,7 +241,7 @@ test('invalid or inconsistent dates are rejected', () => {
     (err) => err.status === 400 && Boolean(err.details.actual_calving_date),
     'actual calving requires a confirmed pregnancy'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -246,7 +252,7 @@ test('invalid or inconsistent dates are rejected', () => {
     (err) => err.status === 400 && Boolean(err.details.calving_outcome),
     'outcome requires an actual calving date'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -257,7 +263,7 @@ test('invalid or inconsistent dates are rejected', () => {
     (err) => err.status === 400 && Boolean(err.details.offspring_count),
     'offspring requires an actual calving date'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -269,7 +275,7 @@ test('invalid or inconsistent dates are rejected', () => {
     (err) => err.status === 400 && Boolean(err.details.pregnancy_check_date),
     'pregnant requires a check date'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -281,7 +287,7 @@ test('invalid or inconsistent dates are rejected', () => {
     (err) => err.status === 400 && Boolean(err.details.expected_calving_date),
     'pregnant requires an expected calving date'
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       breedingService.create({
         ...base,
@@ -299,8 +305,8 @@ test('invalid or inconsistent dates are rejected', () => {
   );
 });
 
-test('clearing pregnancy result clears the expected calving date', () => {
-  const record = breedingService.create({
+test('clearing pregnancy result clears the expected calving date', async () => {
+  const record = await breedingService.create({
     animal_id: animalC.id,
     service_date: addDays(today, -40),
     service_method: 'natural',
@@ -311,7 +317,7 @@ test('clearing pregnancy result clears the expected calving date', () => {
   });
   assert.equal(record.expected_calving_date, addDays(today, 243));
 
-  const reverted = breedingService.update(record.id, {
+  const reverted = await breedingService.update(record.id, {
     animal_id: animalC.id,
     service_date: addDays(today, -40),
     service_method: 'natural',
@@ -321,20 +327,20 @@ test('clearing pregnancy result clears the expected calving date', () => {
   });
   assert.equal(reverted.expected_calving_date, null, 'stale expected date is removed');
   assert.equal(reverted.expected_calving_estimated, 0);
-  assert.equal(breedingService.currentForAnimal(animalC.id), null);
+  assert.equal(await breedingService.currentForAnimal(animalC.id), null);
 });
 
-test('dashboard breeding cards match the breeding summary', () => {
-  const dashboard = dashboardService.get();
-  const summary = breedingService.summary();
+test('dashboard breeding cards match the breeding summary', async () => {
+  const dashboard = await dashboardService.get();
+  const summary = await breedingService.summary();
 
   assert.equal(dashboard.metrics.breeding.currently_pregnant, summary.currently_pregnant_count);
   assert.equal(dashboard.metrics.breeding.calving_soon, summary.calving_soon_count);
   assert.equal(dashboard.metrics.breeding.pending_checks, summary.pending_checks_count);
 });
 
-test('animal deletion is blocked when breeding records exist', () => {
-  assert.throws(
+test('animal deletion is blocked when breeding records exist', async () => {
+  await assert.rejects(
     () => animalService.remove(animalA.id),
     (err) => err.status === 409,
     'animal with breeding records cannot be deleted'

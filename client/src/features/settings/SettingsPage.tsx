@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { Field } from '../../components/Field';
 import { Icon } from '../../components/Icon';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, API_BASE } from '../../lib/api';
 import { useMeta } from '../../lib/MetaContext';
 import { useData } from '../../lib/DataContext';
 import { useToast } from '../../lib/ToastContext';
@@ -26,7 +26,7 @@ export function SettingsPage() {
   async function downloadBackup() {
     setBackingUp(true);
     try {
-      const res = await fetch('/api/settings/backup');
+      const res = await fetch(API_BASE + '/api/settings/backup');
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error((body as { error?: string } | null)?.error || 'Backup failed.');
@@ -185,20 +185,22 @@ export function SettingsPage() {
         </div>
 
         <div className="stack">
-          <div className="card">
-            <div className="card-header">
-              <div className="card-title">Data Backup</div>
+          {meta.capabilities.backup && (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">Data Backup</div>
+              </div>
+              <div className="card-body">
+                <p style={{ color: 'var(--text-2)', marginBottom: 14 }}>
+                  A backup is created automatically once a day and kept on this computer. Download a copy of the farm
+                  database to keep somewhere safe — you can restore it by replacing the database file with this backup.
+                </p>
+                <button type="button" className="btn" onClick={downloadBackup} disabled={backingUp}>
+                  <Icon name="download" size={15} /> {backingUp ? 'Creating backup…' : 'Download Backup'}
+                </button>
+              </div>
             </div>
-            <div className="card-body">
-              <p style={{ color: 'var(--text-2)', marginBottom: 14 }}>
-                A backup is created automatically once a day and kept on this computer. Download a copy of the farm
-                database to keep somewhere safe — you can restore it by replacing the database file with this backup.
-              </p>
-              <button type="button" className="btn" onClick={downloadBackup} disabled={backingUp}>
-                <Icon name="download" size={15} /> {backingUp ? 'Creating backup…' : 'Download Backup'}
-              </button>
-            </div>
-          </div>
+          )}
 
           <div className="card">
             <div className="card-header">

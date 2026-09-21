@@ -1,13 +1,14 @@
 const express = require('express');
 const service = require('../services/financeService');
 const { parseId } = require('../utils/params');
+const { asyncHandler } = require('../middleware/asyncHandler');
 
 const router = express.Router();
 
-router.get('/', (req, res) => res.json(service.list(req.query)));
-router.get('/summary', (req, res) => res.json(service.summary(req.query)));
-router.post('/', (req, res) => res.status(201).json(service.create(req.body)));
-router.put('/:id', (req, res) => res.json(service.update(parseId(req), req.body)));
-router.delete('/:id', (req, res) => res.json(service.remove(parseId(req))));
+router.get('/', asyncHandler(async (req, res) => res.json(await service.list(req.query))));
+router.get('/summary', asyncHandler(async (req, res) => res.json(await service.summary(req.query))));
+router.post('/', asyncHandler(async (req, res) => res.status(201).json(await service.create(req.body))));
+router.put('/:id', asyncHandler(async (req, res) => res.json(await service.update(parseId(req), req.body))));
+router.delete('/:id', asyncHandler(async (req, res) => res.json(await service.remove(parseId(req)))));
 
 module.exports = router;

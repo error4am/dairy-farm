@@ -26,8 +26,8 @@ function assertClose(actual, expected, message) {
 
 const today = todayLocal();
 
-test('employee payment is the single source of truth from 40,000 to 35,000 on every surface', () => {
-  const employee = employeeService.create({
+test('employee payment is the single source of truth from 40,000 to 35,000 on every surface', async () => {
+  const employee = await employeeService.create({
     name: 'Ali',
     role: 'Milker',
     joining_date: today,
@@ -35,7 +35,7 @@ test('employee payment is the single source of truth from 40,000 to 35,000 on ev
     pay_type: 'monthly',
     salary: 40000
   });
-  const payment = paymentService.create({
+  const payment = await paymentService.create({
     employee_id: employee.id,
     date: today,
     type: 'salary',
@@ -43,11 +43,11 @@ test('employee payment is the single source of truth from 40,000 to 35,000 on ev
     description: 'September salary'
   });
 
-  assertClose(employeeService.profile(employee.id).finance.total_paid, 40000, 'profile total before change');
-  assertClose(financeService.totals().expenses, 40000, 'finance total before change');
-  assertClose(dashboardService.get().metrics.employees.labor_cost_this_month, 40000, 'dashboard before change');
+  assertClose((await employeeService.profile(employee.id)).finance.total_paid, 40000, 'profile total before change');
+  assertClose((await financeService.totals()).expenses, 40000, 'finance total before change');
+  assertClose((await dashboardService.get()).metrics.employees.labor_cost_this_month, 40000, 'dashboard before change');
 
-  assert.throws(
+  await assert.rejects(
     () =>
       financeService.update(payment.transaction_id, {
         date: today,
@@ -59,13 +59,13 @@ test('employee payment is the single source of truth from 40,000 to 35,000 on ev
     (err) => err.status === 409 && /employee payment/i.test(err.message),
     'direct finance edit of a linked payment expense is rejected'
   );
-  assert.throws(
+  await assert.rejects(
     () => financeService.remove(payment.transaction_id),
     (err) => err.status === 409 && /employee payment/i.test(err.message),
     'direct finance delete of a linked payment expense is rejected'
   );
 
-  const updated = paymentService.update(payment.id, {
+  const updated = await paymentService.update(payment.id, {
     employee_id: employee.id,
     date: today,
     type: 'salary',
@@ -74,7 +74,7 @@ test('employee payment is the single source of truth from 40,000 to 35,000 on ev
   });
   assertClose(updated.amount, 35000, 'payment updated at the source');
 
-  const profile = employeeService.profile(employee.id);
+  const profile = await employeeService.profile(employee.id);
   assertClose(profile.finance.total_paid, 35000, 'profile total after change');
   assert.equal(profile.recent_payments.length, 1);
   assertClose(profile.recent_payments[0].amount, 35000, 'payment history after change');
@@ -82,25 +82,25 @@ test('employee payment is the single source of truth from 40,000 to 35,000 on ev
   const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(updated.transaction_id);
   assertClose(tx.amount, 35000, 'linked finance transaction after change');
 
-  const totals = financeService.totals();
+  const totals = await financeService.totals();
   assertClose(totals.expenses, 35000, 'finance totals after change');
   assert.equal(totals.net, totals.income - totals.expenses, 'net identity holds');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 1, 'still exactly one expense');
 
-  const monthLabor = financeService.totals({ from: startOfMonth(today), to: today, category: 'labor' }).expenses;
+  const monthLabor = (await financeService.totals({ from: startOfMonth(today), to: today, category: 'labor' })).expenses;
   assertClose(monthLabor, 35000, 'monthly labor total after change');
-  assertClose(dashboardService.get().metrics.employees.labor_cost_this_month, 35000, 'dashboard after change');
+  assertClose((await dashboardService.get()).metrics.employees.labor_cost_this_month, 35000, 'dashboard after change');
 
-  const list = financeService.list({ limit: 10 });
+  const list = await financeService.list({ limit: 10 });
   assert.equal(list.items[0].employee_name, 'Ali', 'finance list still identifies the employee');
   assert.equal(list.items[0].health_record_id, null);
 });
 
-test('health-linked expenses are protected and propagate through the health record', () => {
-  const animal = animalService.create({ tag_number: 'L-1', type: 'cow', gender: 'female' });
-  const before = financeService.totals().expenses;
+test('health-linked expenses are protected and propagate through the health record', async () => {
+  const animal = await animalService.create({ tag_number: 'L-1', type: 'cow', gender: 'female' });
+  const before = (await financeService.totals()).expenses;
 
-  const record = healthService.create({
+  const record = await healthService.create({
     animal_id: animal.id,
     date: today,
     type: 'treatment',
@@ -108,9 +108,9 @@ test('health-linked expenses are protected and propagate through the health reco
     medicine: 'Amoxicillin',
     cost: 4000
   });
-  assertClose(financeService.totals().expenses, before + 4000, 'health expense created');
+  assertClose((await financeService.totals()).expenses, before + 4000, 'health expense created');
 
-  assert.throws(
+  await assert.rejects(
     () =>
       financeService.update(record.transaction_id, {
         date: today,
@@ -121,18 +121,18 @@ test('health-linked expenses are protected and propagate through the health reco
     (err) => err.status === 409 && /health record/i.test(err.message),
     'direct finance edit of a linked health expense is rejected'
   );
-  assert.throws(
+  await assert.rejects(
     () => financeService.remove(record.transaction_id),
     (err) => err.status === 409 && /health record/i.test(err.message),
     'direct finance delete of a linked health expense is rejected'
   );
 
-  const list = financeService.list({ limit: 10 });
+  const list = await financeService.list({ limit: 10 });
   const linked = list.items.find((t) => t.id === record.transaction_id);
   assert.ok(linked.health_record_id, 'finance list exposes the health link');
   assert.equal(linked.employee_id, null);
 
-  const updated = healthService.update(record.id, {
+  const updated = await healthService.update(record.id, {
     animal_id: animal.id,
     date: today,
     type: 'treatment',
@@ -145,19 +145,19 @@ test('health-linked expenses are protected and propagate through the health reco
     3500,
     'transaction follows the health record'
   );
-  assertClose(financeService.totals().expenses, before + 3500, 'finance totals follow the health record');
+  assertClose((await financeService.totals()).expenses, before + 3500, 'finance totals follow the health record');
 
-  healthService.remove(record.id);
+  await healthService.remove(record.id);
   assert.equal(
     db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE id = ?').get(updated.transaction_id).n,
     0,
     'deleting the health record removes the linked expense'
   );
-  assertClose(financeService.totals().expenses, before, 'finance totals return to baseline');
+  assertClose((await financeService.totals()).expenses, before, 'finance totals return to baseline');
 });
 
-test('manual transactions remain editable and deletable', () => {
-  const tx = financeService.create({
+test('manual transactions remain editable and deletable', async () => {
+  const tx = await financeService.create({
     date: today,
     type: 'expense',
     category: 'feed',
@@ -165,7 +165,7 @@ test('manual transactions remain editable and deletable', () => {
     description: 'Manual fodder expense'
   });
 
-  const edited = financeService.update(tx.id, {
+  const edited = await financeService.update(tx.id, {
     date: today,
     type: 'expense',
     category: 'feed',
@@ -174,7 +174,7 @@ test('manual transactions remain editable and deletable', () => {
   });
   assert.equal(edited.amount, 1200);
 
-  const result = financeService.remove(tx.id);
+  const result = await financeService.remove(tx.id);
   assert.equal(result.ok, true);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE id = ?').get(tx.id).n, 0);
 });

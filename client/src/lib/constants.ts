@@ -190,6 +190,10 @@ export const FALLBACK_META: Meta = {
       { value: 'other_expense', label: 'Other Expense' }
     ]
   },
+  capabilities: {
+    backup: true,
+    postgres: false
+  },
   farm: {
     id: 1,
     name: 'My Dairy Farm',

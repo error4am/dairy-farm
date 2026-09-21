@@ -1,0 +1,19 @@
+# Render blueprint for the Dairy Farm Manager staging deployment.
+# This file only describes infrastructure; it does not create or deploy anything
+# by itself. Apply it from the Render dashboard (New > Blueprint) or create the
+# service manually following docs/DEPLOYMENT.md.
+services:
+  - type: web
+    name: dairy-farm-manager
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      # Set this only when the frontend is hosted separately from the API.
+      # - key: FRONTEND_ORIGIN
+      #   sync: false

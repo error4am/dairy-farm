@@ -5,7 +5,7 @@ const fs = require('fs');
 const dbPath = path.join(os.tmpdir(), `dairy-health-test-${process.pid}-${Date.now()}.db`);
 process.env.DB_PATH = dbPath;
 
-const { test, after } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
 require('../db/seed')();
@@ -28,14 +28,20 @@ function assertNetIdentity(totals, message) {
 
 const today = todayLocal();
 
-const animalA = animalService.create({ tag_number: 'H-1', type: 'cow', gender: 'female' });
-const animalB = animalService.create({ tag_number: 'H-2', type: 'buffalo', gender: 'female' });
-const animalC = animalService.create({ tag_number: 'H-3', type: 'cow', gender: 'female' });
+let animalA;
+let animalB;
+let animalC;
 
 let treatmentId = null;
 
-test('health record without cost does not create a transaction', () => {
-  const record = healthService.create({
+before(async () => {
+  animalA = await animalService.create({ tag_number: 'H-1', type: 'cow', gender: 'female' });
+  animalB = await animalService.create({ tag_number: 'H-2', type: 'buffalo', gender: 'female' });
+  animalC = await animalService.create({ tag_number: 'H-3', type: 'cow', gender: 'female' });
+});
+
+test('health record without cost does not create a transaction', async () => {
+  const record = await healthService.create({
     animal_id: animalA.id,
     date: today,
     type: 'checkup',
@@ -46,13 +52,13 @@ test('health record without cost does not create a transaction', () => {
   assert.equal(record.cost, null);
   assert.equal(record.transaction_id, null);
 
-  const totals = financeService.totals();
+  const totals = await financeService.totals();
   assert.equal(totals.expenses, 0);
   assert.equal(totals.count, 0);
 });
 
-test('health record with cost creates a linked medicine expense and keeps net identity', () => {
-  const record = healthService.create({
+test('health record with cost creates a linked medicine expense and keeps net identity', async () => {
+  const record = await healthService.create({
     animal_id: animalA.id,
     date: today,
     type: 'treatment',
@@ -67,33 +73,33 @@ test('health record with cost creates a linked medicine expense and keeps net id
   assert.ok(record.transaction_id, 'linked transaction id is stored');
   assertClose(record.cost, 3500, 'cost is read from the linked transaction');
 
-  const totals = financeService.totals();
+  const totals = await financeService.totals();
   assertClose(totals.expenses, 3500, 'expense total includes the treatment');
   assert.equal(totals.count, 1);
   assertNetIdentity(totals, 'net identity after auto expense');
 
-  const list = financeService.list({ limit: 5 });
+  const list = await financeService.list({ limit: 5 });
   assert.equal(list.items[0].category, 'medicine');
   assert.match(list.items[0].description, /Mastitis/);
   assert.equal(list.items[0].animal_id, animalA.id);
 });
 
-test('withdrawal blocks milk within the period, allows outside it', () => {
-  assert.throws(
+test('withdrawal blocks milk within the period, allows outside it', async () => {
+  await assert.rejects(
     () =>
       milkService.create({ animal_id: animalA.id, date: today, session: 'morning', quantity: 5, unit: 'L' }),
     (err) => err.status === 400 && /withdrawal/i.test(err.message),
     'milk on treatment day is blocked'
   );
 
-  assert.throws(
+  await assert.rejects(
     () =>
       milkService.create({ animal_id: animalA.id, date: addDays(today, 5), session: 'morning', quantity: 5, unit: 'L' }),
     (err) => err.status === 400 && /withdrawal/i.test(err.message),
     'milk on the last withdrawal day is blocked'
   );
 
-  const allowedAfter = milkService.create({
+  const allowedAfter = await milkService.create({
     animal_id: animalA.id,
     date: addDays(today, 6),
     session: 'morning',
@@ -102,7 +108,7 @@ test('withdrawal blocks milk within the period, allows outside it', () => {
   });
   assert.ok(allowedAfter.id, 'milk after withdrawal is allowed');
 
-  const allowedBefore = milkService.create({
+  const allowedBefore = await milkService.create({
     animal_id: animalA.id,
     date: addDays(today, -2),
     session: 'morning',
@@ -111,7 +117,7 @@ test('withdrawal blocks milk within the period, allows outside it', () => {
   });
   assert.ok(allowedBefore.id, 'milk from before the treatment is allowed');
 
-  assert.throws(
+  await assert.rejects(
     () =>
       milkService.update(allowedAfter.id, {
         animal_id: animalA.id,
@@ -125,8 +131,8 @@ test('withdrawal blocks milk within the period, allows outside it', () => {
   );
 });
 
-test('updating cost updates the linked expense', () => {
-  healthService.update(treatmentId, {
+test('updating cost updates the linked expense', async () => {
+  await healthService.update(treatmentId, {
     animal_id: animalA.id,
     date: today,
     type: 'treatment',
@@ -137,17 +143,17 @@ test('updating cost updates the linked expense', () => {
     cost: 4000
   });
 
-  const totals = financeService.totals();
+  const totals = await financeService.totals();
   assertClose(totals.expenses, 4000, 'expense follows the updated cost');
   assert.equal(totals.count, 1, 'no duplicate expense is created');
   assertNetIdentity(totals, 'net identity after cost update');
 
-  const record = healthService.get(treatmentId);
+  const record = await healthService.get(treatmentId);
   assertClose(record.cost, 4000, 'record shows the updated cost');
 });
 
-test('clearing cost removes the linked expense', () => {
-  healthService.update(treatmentId, {
+test('clearing cost removes the linked expense', async () => {
+  await healthService.update(treatmentId, {
     animal_id: animalA.id,
     date: today,
     type: 'treatment',
@@ -158,36 +164,36 @@ test('clearing cost removes the linked expense', () => {
     cost: null
   });
 
-  const record = healthService.get(treatmentId);
+  const record = await healthService.get(treatmentId);
   assert.equal(record.transaction_id, null);
   assert.equal(record.cost, null);
 
-  const totals = financeService.totals();
+  const totals = await financeService.totals();
   assert.equal(totals.expenses, 0);
   assert.equal(totals.count, 0);
   assertNetIdentity(totals, 'net identity after clearing cost');
 });
 
-test('deleting a health record removes its linked expense', () => {
-  const record = healthService.create({
+test('deleting a health record removes its linked expense', async () => {
+  const record = await healthService.create({
     animal_id: animalB.id,
     date: today,
     type: 'illness',
     condition: 'Fever',
     cost: 500
   });
-  assertClose(financeService.totals().expenses, 500, 'expense created');
+  assertClose((await financeService.totals()).expenses, 500, 'expense created');
 
-  healthService.remove(record.id);
+  await healthService.remove(record.id);
 
-  const totals = financeService.totals();
+  const totals = await financeService.totals();
   assert.equal(totals.expenses, 0);
   assert.equal(totals.count, 0);
   assertNetIdentity(totals, 'net identity after deleting health record');
 });
 
-test('health summary counts withdrawals, due dates and monthly events', () => {
-  const vaccination = healthService.create({
+test('health summary counts withdrawals, due dates and monthly events', async () => {
+  const vaccination = await healthService.create({
     animal_id: animalB.id,
     date: today,
     type: 'vaccination',
@@ -196,7 +202,7 @@ test('health summary counts withdrawals, due dates and monthly events', () => {
   });
   assert.ok(vaccination.id);
 
-  healthService.create({
+  await healthService.create({
     animal_id: animalC.id,
     date: today,
     type: 'treatment',
@@ -204,7 +210,7 @@ test('health summary counts withdrawals, due dates and monthly events', () => {
     withdrawal_until: addDays(today, 3)
   });
 
-  const summary = healthService.summary();
+  const summary = await healthService.summary();
 
   assert.equal(summary.withdrawal_count, 2, 'animal A and C are under withdrawal');
   assert.deepEqual(
@@ -223,17 +229,17 @@ test('health summary counts withdrawals, due dates and monthly events', () => {
   assert.equal(byType.illness, undefined, 'deleted illness record is not counted');
 });
 
-test('dashboard health strip matches the health summary', () => {
-  const dashboard = dashboardService.get();
-  const summary = healthService.summary();
+test('dashboard health strip matches the health summary', async () => {
+  const dashboard = await dashboardService.get();
+  const summary = await healthService.summary();
 
   assert.equal(dashboard.metrics.health.withdrawal_count, summary.withdrawal_count);
   assert.equal(dashboard.metrics.health.due_soon_count, summary.due_soon_count);
   assert.equal(dashboard.metrics.health.events_this_month, summary.events_this_month);
 });
 
-test('animal list and profile expose withdrawal state', () => {
-  const animals = animalService.list({});
+test('animal list and profile expose withdrawal state', async () => {
+  const animals = await animalService.list({});
   const a = animals.find((x) => x.tag_number === 'H-1');
   const b = animals.find((x) => x.tag_number === 'H-2');
   const c = animals.find((x) => x.tag_number === 'H-3');
@@ -242,21 +248,21 @@ test('animal list and profile expose withdrawal state', () => {
   assert.equal(c.withdrawal_until, addDays(today, 3));
   assert.equal(b.withdrawal_until, null);
 
-  const profile = animalService.profile(a.id);
+  const profile = await animalService.profile(a.id);
   assert.equal(profile.animal.withdrawal_until, addDays(today, 5));
   assert.ok(profile.recent_health.length >= 1, 'profile includes health history');
 });
 
-test('animal deletion is blocked when health records exist', () => {
-  assert.throws(
+test('animal deletion is blocked when health records exist', async () => {
+  await assert.rejects(
     () => animalService.remove(animalA.id),
     (err) => err.status === 409,
     'animal with health records cannot be deleted'
   );
 });
 
-test('withdrawal date cannot be before the record date', () => {
-  assert.throws(
+test('withdrawal date cannot be before the record date', async () => {
+  await assert.rejects(
     () =>
       healthService.create({
         animal_id: animalB.id,
@@ -269,8 +275,8 @@ test('withdrawal date cannot be before the record date', () => {
   );
 });
 
-test('withdrawal filter returns only active or upcoming withdrawals, soonest first', () => {
-  healthService.create({
+test('withdrawal filter returns only active or upcoming withdrawals, soonest first', async () => {
+  await healthService.create({
     animal_id: animalB.id,
     date: addDays(today, -10),
     type: 'treatment',
@@ -278,7 +284,7 @@ test('withdrawal filter returns only active or upcoming withdrawals, soonest fir
     withdrawal_until: addDays(today, -5)
   });
 
-  const active = healthService.list({ withdrawal: 'active' });
+  const active = await healthService.list({ withdrawal: 'active' });
 
   assert.equal(active.total, 2, 'only the two active withdrawals are listed');
   assert.deepEqual(

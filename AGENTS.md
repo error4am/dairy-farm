@@ -18,7 +18,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Vite (5173) + API (4000) with proxy — browser development |
-| `npm test` | Full suite: 112 server + 5 client = 117 tests |
+| `npm test` | Full suite: 146 server + 5 client = 151 tests (SQLite mode) |
 | `npm run build` | Production client build (`client/dist`) |
 | `npm start` | Plain server (serves built client) |
 | `npm run db:reset` | Deletes and re-seeds the DB at `DB_PATH` (stop the server first) |
@@ -32,6 +32,11 @@ explicitly approved (Feed & Inventory is the current approved phase).
 
 - Dev DB: `dairy/data/dairy.db`; manual-test DB: `dairy/data/dairy-manual-test.db`
 - Select a DB with env vars (read at startup): `DB_PATH`, `BACKUP_DIR`, `PORT`, `HOST`
+- **PostgreSQL mode**: set `DATABASE_URL` (e.g. `postgresql://user:pass@host:5432/db`) to run the
+  online edition; leave it unset for SQLite. In `NODE_ENV=production` the app fails clearly at
+  startup without `DATABASE_URL` or `DB_PATH`. `HOST` defaults to `127.0.0.1` locally and
+  `0.0.0.0` in production. `FRONTEND_ORIGIN` (comma-separated) enables CORS for a separately
+  hosted frontend; wildcard is never allowed. See `docs/DEPLOYMENT.md`.
 - Manual-test session (the farm's working data right now):
   ```powershell
   $env:DB_PATH = "$PWD\data\dairy-manual-test.db"
@@ -46,13 +51,28 @@ explicitly approved (Feed & Inventory is the current approved phase).
 
 ## Architecture conventions
 
-- Layering: `routes → services → db`. Business logic in services; routes are thin.
+- Layering: `routes → services → db adapter`. Business logic in services; routes are thin and
+  wrapped in `asyncHandler`. Services are **async** (PostgreSQL is async); `server/db/index.js`
+  is the data-access adapter (`all/get/run/exec/transaction/ping/now`), backed by
+  `sqliteDriver` (better-sqlite3 behind an async facade + transaction mutex) or `pgDriver`
+  (`pg` Pool, `?`→`$n` conversion, `RETURNING id`, AsyncLocalStorage transaction routing).
+  `server/db/connection.js`, `backup.js`, `seed.js` and `migrate.js` remain SQLite-only and
+  synchronous (Electron requires that contract).
+- SQL must stay portable across SQLite and PostgreSQL: use `?` placeholders, `substr(...)`,
+  `CAST(COUNT(*) AS INTEGER)`, `LOWER(...)`; never `COLLATE NOCASE`, `date(x)`,
+  `datetime('now')` or `last_insert_rowid()`. Timestamps come from `db.now()`; unique/constraint
+  errors are classified via `db.isUniqueViolation` / `db.isConstraintViolation`.
 - Validation: `server/middleware/validate.js` is authoritative (strict Y-M-D calendar dates,
   enums, positive numbers, lengths, letters-only units). Frontend validation is UX only.
   Errors: `HttpError(status, message, details)`.
 - All SQL parameterized; sort columns use whitelists. Multi-step writes use `db.transaction`.
-- Migrations: `server/db/migrations/NNN_name.sql`, applied in order, tracked in `schema_migrations`.
-  Current: 001_init, 002_health, 003_breeding, 004_employees, 005_transaction_link_indexes, 006_inventory.
+- Migrations: `server/db/migrations/NNN_name.sql` (SQLite), applied in order, tracked in
+  `schema_migrations`. Current: 001_init, 002_health, 003_breeding, 004_employees,
+  005_transaction_link_indexes, 006_inventory. PostgreSQL mirrors them 1:1 in
+  `server/db/pg/migrations/` with the same names, applied automatically at startup by
+  `server/db/pgInit.js` (run by `db.ready()`), followed by a farm/user seed when empty.
+  PG keeps TEXT dates/timestamps, `INTEGER` 0/1 booleans and `SERIAL` ids (int4) so API
+  output stays identical to SQLite. Never edit an applied migration; add a new one in both dirs.
 - Linked records (single source of truth):
   - `health_records.transaction_id` → one Medicine expense; edit/clear/delete propagate.
   - `employee_payments.transaction_id` → one Labor expense; edit/delete propagate.
@@ -101,10 +121,16 @@ explicitly approved (Feed & Inventory is the current approved phase).
 
 - Server (`node --test`, temp DBs via `DB_PATH` set before requires): `api-consistency`,
   `calculations`, `health`, `breeding`, `employees`, `linked-transactions`, `input-hardening`,
-  `inventory`, `backup-restore`, `backup-failures`, `server-bind`.
+  `inventory`, `backup-restore`, `backup-failures`, `server-bind`, `health-check`, `config`,
+  `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`, `pg-init`.
 - Client: `client/tests/plural.test.js`.
 - Never weaken/delete tests. Fix genuine defects and add a regression test.
-- Expected: **117/117 passing, 0 failed, 0 skipped**.
+- Expected: **146 server + 5 client = 151 passing, 0 failed, 0 skipped** (SQLite mode).
+- PG coverage: `pg-schema` asserts table/column/FK/unique/index parity between the SQLite and
+  PostgreSQL migrations; `pg-driver` verifies placeholder conversion, `RETURNING id`, error
+  classification and transaction client pinning (mock pool); `pg-integration` runs real service
+  flows on `pg-mem`. `pg-mem` lacks window functions and rollback semantics — `breeding.summary`
+  and real rollback still need a live PostgreSQL check (docs/DEPLOYMENT.md step 11).
 
 ## Electron / packaging notes
 
@@ -118,16 +144,25 @@ explicitly approved (Feed & Inventory is the current approved phase).
   `$env:ELECTRON_RUN_AS_NODE='1'; & node_modules\electron\dist\electron.exe script.js`
 - The installed app is on the older code (pre-Inventory) — rebuild/install to test new modules.
 - No auto-update, no code signing (SmartScreen warning expected).
+- **When the online-staging branch is merged into the Electron branch**, the Electron branch's
+  root `package.json` dependencies must include `cors` (the server now requires it) in addition
+  to `better-sqlite3`/`express`. `pg` stays optional and is only loaded when `DATABASE_URL` is
+  set. The server contract Electron relies on is unchanged: synchronous `require('./index')`,
+  `db/connection.js`, and `db/backup.js`.
 
 ## Git state
 
 - `master` = validated baseline **96abcdc**, pushed.
 - `feature/electron-packaging` = Electron packaging **449663b** + AGENTS.md **49a0806**, pushed.
   Electron is a preserved milestone/offline edition — do not delete it.
-- `feature/feed-inventory` = **current branch**, Phase 3 Feed & Inventory (migration 006 + module).
-  Work is **uncommitted** pending owner approval; do not commit/push without approval.
-- An online/PostgreSQL migration plan was analysed but is **deferred**; the SQLite + Electron
-  architecture remains active for functional phases.
+- `feature/feed-inventory` = **current branch**. Feed & Inventory is committed as **ed967ee** and
+  pushed. The **online staging work (PostgreSQL adapter, PG migrations, config/CORS/health,
+  Render files, docs) is uncommitted** on this branch pending owner approval — do not commit/push
+  without approval.
+- SQLite + Electron remain the active local edition; the online/PostgreSQL path is now
+  implemented for staging. Electron must keep working: `server/index.js` still exports the app
+  synchronously, `db/connection.js` still exports a better-sqlite3 handle, and `db/backup.js`
+  still runs synchronously.
 - Commit style: `fix:`, `ui:`, `feat:`, `chore:` + concise body bullets.
 
 ## Known documented items (low severity, don't "fix" casually)
@@ -140,13 +175,20 @@ explicitly approved (Feed & Inventory is the current approved phase).
 6. Dashboard says "Total Revenue" while Finances says "Income" (intentional per original spec).
 7. All inventory purchases post to the existing `feed` finance category; non-feed supplies
    (mineral/supply) may warrant a category split later.
+8. PostgreSQL keeps dates/timestamps as TEXT and booleans as INTEGER 0/1 (intentional, to keep
+   API responses byte-identical to SQLite); ids are `SERIAL` (int4) so `pg` returns numbers.
+9. In PostgreSQL mode the Settings "Download Backup" card is hidden (`/api/meta` exposes
+   `capabilities.backup`) and `/api/settings/backup` returns 501; SQLite backup/restore is
+   desktop-edition only. No online backup feature yet.
+10. There is **no authentication** yet — staging deployments are open to anyone with the URL.
+   Do not put real farm data online until auth is implemented.
 
 ## Future requirements (do NOT implement without approval)
 
-Alerts (in-app, derived from existing data — next planned phase), PostgreSQL/online web migration
-(plan exists, deferred), Feed consumption prediction, Reports/exports, Notifications (email/SMS/
-WhatsApp/push), Authentication & multi-user, Multi-farm SaaS, Mobile app/PWA, AI features,
-Milk Collection/Sales tracking, cloud sync, auto-updates.
+Authentication (next major phase after online staging), Alerts (in-app, derived from existing
+data), Feed consumption prediction, Reports/exports, Notifications (email/SMS/WhatsApp/push),
+Multi-farm SaaS, Mobile app/PWA, AI features, Milk Collection/Sales tracking, online backup/
+restore, cloud sync, auto-updates.
 
 ## Environment gotchas (Windows PowerShell)
 

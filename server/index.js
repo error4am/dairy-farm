@@ -1,18 +1,49 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { PORT, HOST, CLIENT_DIST } = require('./config');
-const seed = require('./db/seed');
-const backup = require('./db/backup');
+const cors = require('cors');
+const { PORT, HOST, CLIENT_DIST, FRONTEND_ORIGINS } = require('./config');
+const db = require('./db');
 const { notFound, errorHandler } = require('./middleware/errors');
+const { asyncHandler } = require('./middleware/asyncHandler');
 
-seed();
+if (!db.isPostgres) {
+  require('./db/seed')();
+}
 
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+const allowedOrigins = new Set(FRONTEND_ORIGINS);
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      return callback(null, allowedOrigins.has(origin));
+    },
+    credentials: true
+  })
+);
+
+app.get(
+  '/api/health',
+  asyncHandler(async (req, res) => {
+    const healthy = await db.ping();
+    if (!healthy) return res.status(503).json({ status: 'error', database: 'error' });
+    res.json({ status: 'ok', database: 'ok' });
+  })
+);
+
+if (db.isPostgres) {
+  app.use(
+    asyncHandler(async (req, res, next) => {
+      await db.ready();
+      next();
+    })
+  );
+}
+
 app.use('/api/animals', require('./routes/animals'));
 app.use('/api/health-records', require('./routes/health'));
 app.use('/api/breeding-records', require('./routes/breeding'));
@@ -37,23 +68,49 @@ app.use(notFound);
 app.use(errorHandler);
 
 if (require.main === module) {
-  try {
-    const result = backup.runAutomaticBackup();
-    if (result.skipped) {
-      console.log(`Automatic backup: already created today (${result.path})`);
-    } else {
-      console.log(`Automatic backup created: ${result.path}`);
-      if (result.removed.length > 0) {
-        console.log(`Removed ${result.removed.length} old automatic backup(s).`);
-      }
+  let server = null;
+
+  async function shutdown() {
+    if (server) {
+      await new Promise((resolve) => server.close(resolve));
+      server = null;
     }
-  } catch (err) {
-    console.error(`Automatic backup failed: ${err.message}`);
+    await db.close().catch(() => {});
+    process.exit(0);
   }
 
-  app.listen(PORT, HOST, () => {
-    console.log(`Dairy Farm Manager running at http://${HOST}:${PORT}`);
-  });
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+
+  (async () => {
+    try {
+      await db.ready();
+
+      if (!db.isPostgres) {
+        try {
+          const backup = require('./db/backup');
+          const result = backup.runAutomaticBackup();
+          if (result.skipped) {
+            console.log(`Automatic backup: already created today (${result.path})`);
+          } else {
+            console.log(`Automatic backup created: ${result.path}`);
+            if (result.removed.length > 0) {
+              console.log(`Removed ${result.removed.length} old automatic backup(s).`);
+            }
+          }
+        } catch (err) {
+          console.error(`Automatic backup failed: ${err.message}`);
+        }
+      }
+
+      server = app.listen(PORT, HOST, () => {
+        console.log(`Dairy Farm Manager running at http://${HOST}:${PORT} (${db.dialect})`);
+      });
+    } catch (err) {
+      console.error(`Server failed to start: ${err.message}`);
+      process.exit(1);
+    }
+  })();
 }
 
 module.exports = app;
