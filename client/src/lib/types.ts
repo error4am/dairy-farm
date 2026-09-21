@@ -11,6 +11,9 @@ export type CalvingOutcome = 'pending' | 'successful' | 'complication' | 'aborte
 export type EmployeeStatus = 'active' | 'inactive';
 export type PayType = 'monthly' | 'daily';
 export type PaymentType = 'salary' | 'advance' | 'bonus' | 'other';
+export type InventoryCategory = 'concentrate' | 'silage' | 'fodder' | 'mineral' | 'supply' | 'other';
+export type InventoryMovementType = 'opening' | 'purchase' | 'consumption' | 'waste' | 'adjustment';
+export type AdjustmentDirection = 'increase' | 'decrease';
 
 export interface Farm {
   id: number;
@@ -75,6 +78,8 @@ export interface Transaction {
   employee_code?: string | null;
   payment_type?: PaymentType | null;
   health_record_id?: number | null;
+  inventory_movement_id?: number | null;
+  inventory_item_id?: number | null;
 }
 
 export interface Employee {
@@ -131,6 +136,63 @@ export interface EmployeeProfile {
   };
   recent_payments: EmployeePayment[];
   monthly_paid: { month: string; total: number }[];
+}
+
+export interface InventoryItem {
+  id: number;
+  farm_id: number;
+  name: string;
+  category: InventoryCategory;
+  unit: string;
+  minimum_stock: number | null;
+  active: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  current_stock: number;
+  movements_count: number;
+  last_movement_date: string | null;
+}
+
+export interface InventoryMovement {
+  id: number;
+  farm_id: number;
+  item_id: number;
+  date: string;
+  type: InventoryMovementType;
+  quantity: number;
+  unit: string;
+  unit_cost: number | null;
+  total_cost: number | null;
+  supplier: string | null;
+  notes: string | null;
+  transaction_id: number | null;
+  created_at: string;
+  updated_at: string;
+  item_name?: string;
+  item_unit?: string;
+  item_category?: InventoryCategory;
+  item_active?: number;
+}
+
+export interface InventorySummary {
+  active_count: number;
+  low_stock_count: number;
+  out_of_stock_count: number;
+}
+
+export interface InventoryItemProfile {
+  item: InventoryItem;
+  stock: {
+    current: number;
+    opening: number;
+    purchased: number;
+    consumed: number;
+    wasted: number;
+    adjusted: number;
+    movements_count: number;
+    last_movement_date: string | null;
+  };
 }
 
 export interface HealthRecord {
@@ -225,6 +287,9 @@ export interface Meta {
     EMPLOYEE_STATUSES: string[];
     PAY_TYPES: string[];
     PAYMENT_TYPES: string[];
+    INVENTORY_CATEGORIES: string[];
+    INVENTORY_MOVEMENT_TYPES: string[];
+    ADJUSTMENT_DIRECTIONS: string[];
   };
   categories: {
     income: Category[];
@@ -266,6 +331,11 @@ export interface Dashboard {
     employees: {
       active_count: number;
       labor_cost_this_month: number;
+    };
+    inventory: {
+      active_items: number;
+      low_stock: number;
+      out_of_stock: number;
     };
   };
   recent_activity: {

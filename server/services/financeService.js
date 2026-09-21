@@ -16,6 +16,7 @@ const LIST_JOINS = `
   LEFT JOIN employee_payments ep ON ep.transaction_id = t.id
   LEFT JOIN employees e ON e.id = ep.employee_id
   LEFT JOIN health_records hr ON hr.transaction_id = t.id
+  LEFT JOIN inventory_movements im ON im.transaction_id = t.id
 `;
 
 function findLink(transactionId) {
@@ -32,6 +33,11 @@ function findLink(transactionId) {
   const healthLink = db.prepare('SELECT id FROM health_records WHERE transaction_id = ?').get(transactionId);
   if (healthLink) return { kind: 'health_record', health_record_id: healthLink.id };
 
+  const inventoryLink = db
+    .prepare('SELECT id AS movement_id, item_id FROM inventory_movements WHERE transaction_id = ?')
+    .get(transactionId);
+  if (inventoryLink) return { kind: 'inventory_movement', ...inventoryLink };
+
   return null;
 }
 
@@ -42,6 +48,12 @@ function assertNotLinked(transactionId) {
     throw new HttpError(
       409,
       'This expense is linked to an employee payment. Edit or delete it from the Employees module.'
+    );
+  }
+  if (link.kind === 'inventory_movement') {
+    throw new HttpError(
+      409,
+      'This expense is linked to an inventory purchase. Edit or delete it from the Inventory module.'
     );
   }
   throw new HttpError(409, 'This expense is linked to a health record. Edit or delete it from the Health module.');
@@ -89,7 +101,8 @@ function list(query = {}) {
     .prepare(
       `SELECT t.*, a.tag_number AS animal_tag, a.name AS animal_name,
               e.id AS employee_id, e.name AS employee_name, e.employee_id AS employee_code,
-              ep.type AS payment_type, hr.id AS health_record_id
+              ep.type AS payment_type, hr.id AS health_record_id,
+              im.id AS inventory_movement_id, im.item_id AS inventory_item_id
        FROM transactions t
        ${LIST_JOINS}
        WHERE ${whereSql}

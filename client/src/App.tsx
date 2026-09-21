@@ -7,6 +7,8 @@ import { HealthPage } from './features/health/HealthPage';
 import { BreedingPage } from './features/breeding/BreedingPage';
 import { MilkPage } from './features/milk/MilkPage';
 import { FinancesPage } from './features/finances/FinancesPage';
+import { InventoryPage } from './features/inventory/InventoryPage';
+import { InventoryItemPage } from './features/inventory/InventoryItemPage';
 import { EmployeesPage } from './features/employees/EmployeesPage';
 import { EmployeeProfilePage } from './features/employees/EmployeeProfilePage';
 import { SettingsPage } from './features/settings/SettingsPage';
@@ -22,6 +24,8 @@ export default function App() {
         <Route path="breeding" element={<BreedingPage />} />
         <Route path="milk" element={<MilkPage />} />
         <Route path="finances" element={<FinancesPage />} />
+        <Route path="inventory" element={<InventoryPage />} />
+        <Route path="inventory/:id" element={<InventoryItemPage />} />
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="employees/:id" element={<EmployeeProfilePage />} />
         <Route path="settings" element={<SettingsPage />} />

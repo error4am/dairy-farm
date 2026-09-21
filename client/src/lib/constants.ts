@@ -5,6 +5,8 @@ import type {
   EmployeeStatus,
   Gender,
   HealthType,
+  InventoryCategory,
+  InventoryMovementType,
   Meta,
   PayType,
   PaymentType,
@@ -128,6 +130,31 @@ export const PAYMENT_TYPE_TONES: Record<PaymentType, 'green' | 'amber' | 'blue' 
   other: 'gray'
 };
 
+export const INVENTORY_CATEGORY_LABELS: Record<InventoryCategory, string> = {
+  concentrate: 'Concentrate',
+  silage: 'Silage',
+  fodder: 'Fodder',
+  mineral: 'Mineral Mix',
+  supply: 'Supply',
+  other: 'Other'
+};
+
+export const MOVEMENT_TYPE_LABELS: Record<InventoryMovementType, string> = {
+  opening: 'Opening Stock',
+  purchase: 'Purchase',
+  consumption: 'Consumption',
+  waste: 'Waste',
+  adjustment: 'Adjustment'
+};
+
+export const MOVEMENT_TYPE_TONES: Record<InventoryMovementType, 'green' | 'blue' | 'amber' | 'red' | 'gray'> = {
+  opening: 'blue',
+  purchase: 'green',
+  consumption: 'amber',
+  waste: 'red',
+  adjustment: 'gray'
+};
+
 export const FALLBACK_META: Meta = {
   enums: {
     ANIMAL_TYPES: ['cow', 'buffalo', 'other'],
@@ -142,7 +169,10 @@ export const FALLBACK_META: Meta = {
     CALVING_OUTCOMES: ['pending', 'successful', 'complication', 'aborted', 'other'],
     EMPLOYEE_STATUSES: ['active', 'inactive'],
     PAY_TYPES: ['monthly', 'daily'],
-    PAYMENT_TYPES: ['salary', 'advance', 'bonus', 'other']
+    PAYMENT_TYPES: ['salary', 'advance', 'bonus', 'other'],
+    INVENTORY_CATEGORIES: ['concentrate', 'silage', 'fodder', 'mineral', 'supply', 'other'],
+    INVENTORY_MOVEMENT_TYPES: ['opening', 'purchase', 'consumption', 'waste', 'adjustment'],
+    ADJUSTMENT_DIRECTIONS: ['increase', 'decrease']
   },
   categories: {
     income: [

@@ -18,6 +18,8 @@ app.use('/api/health-records', require('./routes/health'));
 app.use('/api/breeding-records', require('./routes/breeding'));
 app.use('/api/employees', require('./routes/employees'));
 app.use('/api/employee-payments', require('./routes/employeePayments'));
+app.use('/api/inventory-items', require('./routes/inventoryItems'));
+app.use('/api/inventory-movements', require('./routes/inventoryMovements'));
 app.use('/api/milk-records', require('./routes/milk'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/dashboard', require('./routes/dashboard'));

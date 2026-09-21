@@ -234,6 +234,73 @@ test('employee API creates a linked labor expense and dashboard matches finance'
   assert.equal(directDelete.status, 409, 'HTTP finance delete of linked payment is blocked');
 });
 
+test('inventory API: purchase links to finance and dashboard matches summary', async () => {
+  const item = await req('POST', '/inventory-items', {
+    name: 'API Silage',
+    category: 'silage',
+    unit: 'kg',
+    minimum_stock: 100
+  });
+  assert.equal(item.status, 201, JSON.stringify(item.data));
+
+  const opening = await req('POST', '/inventory-movements', {
+    item_id: item.data.id,
+    date: today,
+    type: 'opening',
+    quantity: 500,
+    unit: 'kg'
+  });
+  assert.equal(opening.status, 201, JSON.stringify(opening.data));
+
+  const purchase = await req('POST', '/inventory-movements', {
+    item_id: item.data.id,
+    date: today,
+    type: 'purchase',
+    quantity: 100,
+    unit: 'kg',
+    unit_cost: 25,
+    total_cost: 2500,
+    supplier: 'API Supplier'
+  });
+  assert.equal(purchase.status, 201, JSON.stringify(purchase.data));
+  assert.ok(purchase.data.transaction_id, 'purchase linked to a finance transaction');
+
+  const itemAfter = await req('GET', `/inventory-items/${item.data.id}`);
+  assert.equal(itemAfter.data.current_stock, 600, 'stock derived from movements over HTTP');
+
+  const financeList = await req('GET', '/transactions?limit=200');
+  const linked = financeList.data.items.find((t) => t.id === purchase.data.transaction_id);
+  assert.ok(linked, 'linked expense visible in the finance list');
+  assert.equal(linked.inventory_item_id, item.data.id);
+  assert.equal(linked.category, 'feed');
+
+  const directEdit = await req('PUT', `/transactions/${purchase.data.transaction_id}`, {
+    date: today,
+    type: 'expense',
+    category: 'feed',
+    amount: 1
+  });
+  assert.equal(directEdit.status, 409, 'HTTP finance edit of an inventory purchase is blocked');
+
+  const directDelete = await req('DELETE', `/transactions/${purchase.data.transaction_id}`);
+  assert.equal(directDelete.status, 409, 'HTTP finance delete of an inventory purchase is blocked');
+
+  const summary = await req('GET', '/inventory-items/summary');
+  const dashboard = await req('GET', '/dashboard');
+  assert.equal(dashboard.data.metrics.inventory.active_items, summary.data.active_count);
+  assert.equal(dashboard.data.metrics.inventory.low_stock, summary.data.low_stock_count);
+  assert.equal(dashboard.data.metrics.inventory.out_of_stock, summary.data.out_of_stock_count);
+
+  const negative = await req('POST', '/inventory-movements', {
+    item_id: item.data.id,
+    date: today,
+    type: 'consumption',
+    quantity: 999999,
+    unit: 'kg'
+  });
+  assert.equal(negative.status, 400, 'negative stock blocked over HTTP');
+});
+
 after(() => {
   if (server) server.close();
   db.close();

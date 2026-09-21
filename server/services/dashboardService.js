@@ -5,6 +5,7 @@ const financeService = require('./financeService');
 const healthService = require('./healthService');
 const breedingService = require('./breedingService');
 const employeeService = require('./employeeService');
+const inventoryService = require('./inventoryService');
 const { INCOME_CATEGORIES, EXPENSE_CATEGORIES } = require('../constants/categories');
 const { todayLocal, startOfWeek, lastNDates, startOfMonth } = require('../utils/date');
 
@@ -41,6 +42,7 @@ function get() {
   const health = healthService.summary();
   const breeding = breedingService.summary();
   const employees = employeeService.summary();
+  const inventory = inventoryService.summary();
   const laborCost = financeService.totals({ from: startOfMonth(today), to: today, category: 'labor' }).expenses;
 
   const milk = db
@@ -133,6 +135,11 @@ function get() {
       employees: {
         active_count: employees.active_count,
         labor_cost_this_month: laborCost
+      },
+      inventory: {
+        active_items: inventory.active_count,
+        low_stock: inventory.low_stock_count,
+        out_of_stock: inventory.out_of_stock_count
       }
     },
     recent_activity: activity,

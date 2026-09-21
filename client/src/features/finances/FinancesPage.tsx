@@ -190,6 +190,19 @@ export function FinancesPage() {
             </div>
           );
         }
+        if (t.inventory_item_id) {
+          return (
+            <div className="row-actions">
+              <Link
+                to={`/inventory/${t.inventory_item_id}`}
+                className="btn btn-ghost btn-icon btn-sm"
+                title="Linked to an inventory purchase — edit it from the Inventory module"
+              >
+                <Icon name="pencil" size={15} />
+              </Link>
+            </div>
+          );
+        }
         return (
           <div className="row-actions">
             <button

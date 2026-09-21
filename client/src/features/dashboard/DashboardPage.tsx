@@ -82,6 +82,9 @@ export function DashboardPage() {
         <StatCard label="Pending Checks" value={m.breeding.pending_checks} to="/breeding?filter=pending" />
         <StatCard label="Active Employees" value={m.employees.active_count} to="/employees" />
         <StatCard label="Labor Cost (Month)" value={formatMoney(m.employees.labor_cost_this_month, currency)} />
+        <StatCard label="Active Items" value={m.inventory.active_items} to="/inventory" />
+        <StatCard label="Low Stock" value={m.inventory.low_stock} to="/inventory?status=low" />
+        <StatCard label="Out of Stock" value={m.inventory.out_of_stock} to="/inventory?status=out" />
       </div>
 
       <div className="grid-2">
