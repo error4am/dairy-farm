@@ -3,7 +3,22 @@ const { spawnSync } = require('node:child_process');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveHost, resolveOrigins } = require('../config');
+const { resolveHost, resolveOrigins, resolveAuthEnabled, resolveCookieSecure } = require('../config');
+
+test('auth defaults to enabled in PostgreSQL mode and disabled for SQLite', () => {
+  assert.equal(resolveAuthEnabled({}, true), true, 'online edition is protected by default');
+  assert.equal(resolveAuthEnabled({}, false), false, 'SQLite/desktop stays open by default');
+  assert.equal(resolveAuthEnabled({ AUTH_ENABLED: 'true' }, false), true, 'explicit true overrides');
+  assert.equal(resolveAuthEnabled({ AUTH_ENABLED: 'false' }, true), false, 'explicit false overrides');
+  assert.equal(resolveAuthEnabled({ AUTH_ENABLED: 'garbage' }, true), true, 'unknown values fall back to the default');
+});
+
+test('session cookie Secure flag defaults to production and honors overrides', () => {
+  assert.equal(resolveCookieSecure({}, true), true);
+  assert.equal(resolveCookieSecure({}, false), false);
+  assert.equal(resolveCookieSecure({ COOKIE_SECURE: 'true' }, false), true);
+  assert.equal(resolveCookieSecure({ COOKIE_SECURE: 'false' }, true), false);
+});
 
 test('host defaults to loopback locally and all interfaces in production', () => {
   assert.equal(resolveHost({}, false), '127.0.0.1');

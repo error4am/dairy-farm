@@ -12,8 +12,27 @@ import { InventoryItemPage } from './features/inventory/InventoryItemPage';
 import { EmployeesPage } from './features/employees/EmployeesPage';
 import { EmployeeProfilePage } from './features/employees/EmployeeProfilePage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { LoginPage } from './features/auth/LoginPage';
+import { SetupPage } from './features/auth/SetupPage';
+import { useAuth } from './lib/AuthContext';
 
 export default function App() {
+  const auth = useAuth();
+
+  if (auth.loading) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card card">
+          <p className="auth-subtitle">Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (auth.authEnabled && !auth.authenticated) {
+    return auth.setupRequired ? <SetupPage /> : <LoginPage />;
+  }
+
   return (
     <Routes>
       <Route element={<AppLayout />}>

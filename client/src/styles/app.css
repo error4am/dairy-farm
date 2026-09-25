@@ -645,3 +645,60 @@
     display: none;
   }
 }
+
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px;
+}
+
+.auth-brand {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.auth-title {
+  font-size: 22px;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.auth-subtitle {
+  color: var(--text-2);
+  font-size: 13.5px;
+  margin: 0 0 18px;
+}
+
+.auth-alert {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.topbar-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}

@@ -86,6 +86,12 @@ This runs `node index.js` in `server/` (workspace script). The server:
 | `PORT` | Render provides | Do not hardcode |
 | `HOST` | Optional | Defaults to `0.0.0.0` in production |
 | `FRONTEND_ORIGIN` | Only for split hosting | Comma-separated allowed origins |
+| `AUTH_ENABLED` | Optional | Defaults to **on** when `DATABASE_URL` is set, off for SQLite/desktop. `true`/`false` overrides |
+| `SESSION_TTL_SECONDS` | Optional | Session lifetime, default `604800` (7 days) |
+| `COOKIE_SECURE` | Optional | Session cookie `Secure` flag; defaults to on in production |
+| `LOGIN_MAX_ATTEMPTS` | Optional | Failed logins per client per window before HTTP 429, default `10` |
+| `LOGIN_WINDOW_MS` | Optional | Rate-limit window in ms, default `900000` (15 min) |
+| `SETUP_SECRET` | Optional | If set, the one-time owner setup requires this secret |
 | `DB_PATH` / `BACKUP_DIR` | Local edition only | Ignored in PostgreSQL mode |
 
 In `production` mode the app fails clearly at startup if neither `DATABASE_URL` nor
@@ -132,30 +138,58 @@ FRONTEND_ORIGIN=https://dairy-farm-frontend.onrender.com
 
 - Comma-separated list is supported for multiple origins.
 - Wildcards are never used. Requests from unlisted origins receive no CORS headers.
-- Credentials are enabled so secure-cookie authentication can be added later.
+- Credentials are enabled: the auth session cookie (`dairy_session`) is `HttpOnly` +
+  `SameSite=Lax`, so split hosting must use HTTPS on both origins.
 - In development, `http://localhost:5173` and `http://127.0.0.1:5173` are allowed
   automatically.
 
-## 10. Verify the deployed application
+## 10. Owner authentication (first run)
 
-1. `GET /api/health` returns `{"status":"ok","database":"ok"}`.
-2. Open the frontend URL: the dashboard loads with the seeded farm.
-3. Create an animal, then a milk record.
-4. Add a health record with a cost and confirm exactly one Medicine expense appears in Finances.
-5. Add an employee and a payment, then confirm exactly one Labor expense.
-6. Create an inventory item with opening stock, record a purchase with a total cost, and confirm:
+Online deployments (`AUTH_ENABLED`, on by default with `DATABASE_URL`) are protected by a
+single owner account:
+
+1. Open the app URL. A fresh database shows the **owner setup page** (one-time only).
+2. Enter name, email (any valid format), password (8+ chars, letters + numbers) and
+   confirm. The password is stored as an **Argon2id** hash; the server never returns it.
+3. Setup signs you in immediately (`dairy_session` cookie, HttpOnly, SameSite=Lax,
+   Secure in production). All `/api/*` routes except `/api/health` and `/api/auth/*`
+   return HTTP 401 without a valid session.
+4. Later visits show the **login page**. Repeated failed attempts from one client
+   (default `LOGIN_MAX_ATTEMPTS=10` inside `LOGIN_WINDOW_MS`, 15 min) trigger HTTP 429
+   for the rest of the window; a successful login resets the counter.
+5. Every mutating request must also send the `X-CSRF-Token` header matching the
+   `dairy_csrf` cookie (the frontend does this automatically); otherwise HTTP 403.
+6. **Log out** from the top bar destroys the session row server-side.
+
+Notes:
+
+- There is no registration, password reset or second account — losing the owner
+  credentials requires operator access to the database (`users` table).
+- Set `SETUP_SECRET` if the deployment URL may be discovered before an operator claims
+  the account; setup then requires this secret.
+- Sessions live in the `sessions` table (7-day default TTL, renewable by logging in).
+
+## 11. Verify the deployed application
+
+1. `GET /api/health` returns `{"status":"ok","database":"ok"}` (no login required).
+2. Open the frontend URL: a fresh database shows the owner setup page; complete it.
+3. Confirm an unauthenticated `GET /api/animals` returns HTTP 401 (e.g. via curl in a
+   private window), then log in again.
+4. Create an animal, then a milk record.
+5. Add a health record with a cost and confirm exactly one Medicine expense appears in Finances.
+6. Add an employee and a payment, then confirm exactly one Labor expense.
+7. Create an inventory item with opening stock, record a purchase with a total cost, and confirm:
    - the linked Feed expense appears exactly once in Finances,
    - editing the purchase updates the expense instead of duplicating it,
    - stock is derived from the movement ledger,
    - consumption cannot drive stock negative.
-7. Confirm Settings shows no "Download Backup" card in online mode (backups are desktop-only).
-8. Restart the service (Render -> Manual Deploy) and confirm data persists.
-9. Redeploy/restart twice and confirm migrations are not re-applied (`schema_migrations`).
+8. Confirm Settings shows no "Download Backup" card in online mode (backups are desktop-only).
+9. Restart the service (Render -> Manual Deploy) and confirm data persists and login still works.
+10. Redeploy/restart twice and confirm migrations are not re-applied (`schema_migrations`).
 
-## 11. Local PostgreSQL verification (optional but recommended)
+## 12. Local PostgreSQL verification (optional but recommended)
 
-Until this has been run against a real PostgreSQL server, treat the PostgreSQL path as
-staging-untested:
+Re-run after schema or auth changes against a disposable database:
 
 ```powershell
 $env:DATABASE_URL = "postgresql://user:password@localhost:5432/dairy_staging"
@@ -163,21 +197,27 @@ $env:NODE_ENV = "production"
 npm start
 ```
 
-Then run the verification checklist from step 10. A disposable database is best.
+Then run the verification checklist from step 11. The staging branch of this repo has
+been verified against a real PostgreSQL (Neon) with the auth battery (setup, login,
+401/403/429 paths, protected workflows) and the full workflow battery.
 
 ## Remaining blockers / risks
 
-1. **Real PostgreSQL has not been executed in automated tests.** The automated suite runs
-   the full application on SQLite and the data-access layer + schema against an in-memory
-   PostgreSQL emulator (`pg-mem`). `pg-mem` does not implement window functions or
-   transaction rollback, so `breedingService.summary()`/dashboard breeding metrics and real
-   rollback behaviour must be verified against a real PostgreSQL database (step 11).
-2. **No authentication yet.** The staging API is open to anyone with the URL. Do not put
-   real farm data online until authentication is implemented (planned next phases).
-3. **Single farm only.** `FARM_ID` is fixed to 1; there is no multi-farm support yet.
-4. **Backups are desktop-only.** PostgreSQL backups must be handled by the managed provider
+1. **Automated tests still run on SQLite + `pg-mem`.** The suite covers the full
+   application on SQLite and the data-access layer + schema against an in-memory
+   PostgreSQL emulator (`pg-mem`), which lacks window functions and transaction
+   rollback. Those paths (`breedingService.summary()`, dashboard breeding metrics,
+   real rollback) have been verified manually against real PostgreSQL (Neon staging,
+   step 12) but are not part of the automated suite.
+2. **Owner setup is a claim-it-first flow.** Anyone reaching a fresh deployment before
+   the operator can become the owner unless `SETUP_SECRET` is set. Credentials have no
+   recovery flow — database access is required to reset `users.password_hash`.
+3. **Rate limiting is per-process and in-memory** (resets on restart; per instance if
+   scaled horizontally).
+4. **Single farm only.** `FARM_ID` is fixed to 1; there is no multi-farm support yet.
+5. **Backups are desktop-only.** PostgreSQL backups must be handled by the managed provider
    (Render/Neon snapshots) until an online backup feature is built.
-5. **Better-sqlite3 native module** is still installed for the desktop edition. Online mode
+6. **Better-sqlite3 native module** is still installed for the desktop edition. Online mode
    does not load it at startup, but `npm install` must succeed on the host.
-6. **Staging secrets** must be set in the Render dashboard, never committed. `.env` files
+7. **Staging secrets** must be set in the Render dashboard, never committed. `.env` files
    are gitignored; `.env.example` documents the variables only.

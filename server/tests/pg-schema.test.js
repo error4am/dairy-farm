@@ -88,7 +88,7 @@ function readPgSchema() {
       tables.get(match[1]).columns.push(match[2]);
     }
 
-    const indexRe = /CREATE INDEX IF NOT EXISTS (\w+)/g;
+    const indexRe = /CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+)/g;
     while ((match = indexRe.exec(sql))) indexes.push(match[1]);
   }
 

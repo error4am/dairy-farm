@@ -2,10 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const { PORT, HOST, CLIENT_DIST, FRONTEND_ORIGINS } = require('./config');
+const cookieParser = require('cookie-parser');
+const { PORT, HOST, CLIENT_DIST, FRONTEND_ORIGINS, AUTH_ENABLED, IS_PRODUCTION } = require('./config');
 const db = require('./db');
 const { notFound, errorHandler } = require('./middleware/errors');
 const { asyncHandler } = require('./middleware/asyncHandler');
+const { csrfProtection } = require('./middleware/csrf');
+const { requireAuth } = require('./middleware/requireAuth');
 
 if (!db.isPostgres) {
   require('./db/seed')();
@@ -14,6 +17,10 @@ if (!db.isPostgres) {
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
+app.use(cookieParser());
+if (IS_PRODUCTION) {
+  app.set('trust proxy', 1);
+}
 
 const allowedOrigins = new Set(FRONTEND_ORIGINS);
 app.use(
@@ -42,6 +49,12 @@ if (db.isPostgres) {
       next();
     })
   );
+}
+
+app.use('/api', csrfProtection);
+app.use('/api/auth', require('./routes/auth'));
+if (AUTH_ENABLED) {
+  app.use('/api', asyncHandler(requireAuth));
 }
 
 app.use('/api/animals', require('./routes/animals'));

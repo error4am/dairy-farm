@@ -21,6 +21,20 @@ function resolveHost(env = process.env, production = IS_PRODUCTION) {
   return production ? '0.0.0.0' : '127.0.0.1';
 }
 
+function resolveAuthEnabled(env = process.env, isPostgres = IS_POSTGRES) {
+  const value = String(env.AUTH_ENABLED || '').toLowerCase();
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return isPostgres;
+}
+
+function resolveCookieSecure(env = process.env, production = IS_PRODUCTION) {
+  const value = String(env.COOKIE_SECURE || '').toLowerCase();
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return production;
+}
+
 function resolveOrigins(env = process.env, production = IS_PRODUCTION) {
   const configured = String(env.FRONTEND_ORIGIN || '')
     .split(',')
@@ -46,6 +60,14 @@ module.exports = {
   BACKUP_DIR: process.env.BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backups'),
   CLIENT_DIST: path.join(__dirname, '..', 'client', 'dist'),
   FRONTEND_ORIGINS: resolveOrigins(),
+  AUTH_ENABLED: resolveAuthEnabled(),
+  SESSION_TTL_SECONDS: Math.max(60, Number(process.env.SESSION_TTL_SECONDS) || 604800),
+  COOKIE_SECURE: resolveCookieSecure(),
+  LOGIN_MAX_ATTEMPTS: Math.max(1, Number(process.env.LOGIN_MAX_ATTEMPTS) || 10),
+  LOGIN_WINDOW_MS: Math.max(1000, Number(process.env.LOGIN_WINDOW_MS) || 15 * 60 * 1000),
+  SETUP_SECRET: process.env.SETUP_SECRET || '',
   resolveHost,
+  resolveAuthEnabled,
+  resolveCookieSecure,
   resolveOrigins
 };

@@ -18,7 +18,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Vite (5173) + API (4000) with proxy — browser development |
-| `npm test` | Full suite: 146 server + 5 client = 151 tests (SQLite mode) |
+| `npm test` | Full suite: 166 server + 5 client = 171 tests (SQLite mode) |
 | `npm run build` | Production client build (`client/dist`) |
 | `npm start` | Plain server (serves built client) |
 | `npm run db:reset` | Deletes and re-seeds the DB at `DB_PATH` (stop the server first) |
@@ -68,7 +68,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 - All SQL parameterized; sort columns use whitelists. Multi-step writes use `db.transaction`.
 - Migrations: `server/db/migrations/NNN_name.sql` (SQLite), applied in order, tracked in
   `schema_migrations`. Current: 001_init, 002_health, 003_breeding, 004_employees,
-  005_transaction_link_indexes, 006_inventory. PostgreSQL mirrors them 1:1 in
+  005_transaction_link_indexes, 006_inventory, 007_auth. PostgreSQL mirrors them 1:1 in
   `server/db/pg/migrations/` with the same names, applied automatically at startup by
   `server/db/pgInit.js` (run by `db.ready()`), followed by a farm/user seed when empty.
   PG keeps TEXT dates/timestamps, `INTEGER` 0/1 booleans and `SERIAL` ids (int4) so API
@@ -86,6 +86,30 @@ explicitly approved (Feed & Inventory is the current approved phase).
   (mark inactive). Movement deletion is blocked if it would make stock negative.
 - Frontend: `features/<module>/` pages + forms; shared `components/`; data via `useApi` +
   `DataContext.refresh()`; `EmptyState`, `ConfirmDialog`; pluralization via `lib/plural.js`.
+- **Owner authentication** (one owner account, no registration/reset/OAuth/MFA):
+  - `AUTH_ENABLED` defaults to **on when `DATABASE_URL` is set, off for SQLite/Electron**
+    (override with `true`/`false`). Auth endpoints (`/api/auth/*`) exist in both modes;
+    the protection gate does not. SQLite/desktop behaviour is unchanged by default.
+  - Middleware order in `server/index.js`: json → cookie-parser → cors → `/api/health`
+    (public) → PG readiness → CSRF (`/api`) → auth router (`/api/auth`) →
+    `requireAuth` gate for all other `/api/*` when enabled → module routes.
+  - Sessions are DB rows (`sessions` table): cookie `dairy_session` (HttpOnly, SameSite=Lax,
+    Secure in production, TTL `SESSION_TTL_SECONDS`=7 days); the cookie holds a random
+    base64url token, the row stores its SHA-256 — the raw token is never returned to JS.
+  - CSRF: double-submit cookie `dairy_csrf` + `X-CSRF-Token` header (timing-safe compare,
+    403); issued on auth GETs. Client sends it automatically from `client/src/lib/api.ts`
+    and dispatches `dairy:unauthorized` on 401 (excluding `/auth/*`).
+  - Passwords: **Argon2id** (`@node-rs/argon2`, memoryCost 19456 / timeCost 2 / p 1),
+    dummy-hash verification equalizes unknown-email timing; generic 401 message for both
+    wrong password and unknown email.
+  - Login rate limit: in-memory per-IP (`LOGIN_MAX_ATTEMPTS`=10 per `LOGIN_WINDOW_MS`=15 min),
+    429 before verification once the threshold is hit, counter resets on success/window.
+    Per-process — resets on restart, per instance when scaled.
+  - One-time setup (`POST /api/auth/setup`) adopts the seeded placeholder user (email NULL);
+    duplicate setup → 409. Optional `SETUP_SECRET` gates setup (403 without it).
+  - Frontend gate: `AuthProvider` (`client/src/lib/AuthContext.tsx`) wraps the app;
+    `App.tsx` shows `SetupPage`/`LoginPage` (one-time / login) before `AppLayout` when
+    enabled; `Topbar` shows the user name + Logout only when auth is enabled.
 
 ## Feed & Inventory module (Phase 3, current branch)
 
@@ -122,15 +146,18 @@ explicitly approved (Feed & Inventory is the current approved phase).
 - Server (`node --test`, temp DBs via `DB_PATH` set before requires): `api-consistency`,
   `calculations`, `health`, `breeding`, `employees`, `linked-transactions`, `input-hardening`,
   `inventory`, `backup-restore`, `backup-failures`, `server-bind`, `health-check`, `config`,
-  `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`, `pg-init`.
+  `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`, `pg-init`, `auth`.
+  `auth.test.js` sets `AUTH_ENABLED=true` + `LOGIN_MAX_ATTEMPTS=5` before requires and
+  covers setup/login/logout/me, generic 401s, Argon2id storage, session + CSRF cookies,
+  401/403/429 paths, expired sessions, public health and protected farm workflows.
 - Client: `client/tests/plural.test.js`.
 - Never weaken/delete tests. Fix genuine defects and add a regression test.
-- Expected: **146 server + 5 client = 151 passing, 0 failed, 0 skipped** (SQLite mode).
+- Expected: **166 server + 5 client = 171 passing, 0 failed, 0 skipped** (SQLite mode).
 - PG coverage: `pg-schema` asserts table/column/FK/unique/index parity between the SQLite and
   PostgreSQL migrations; `pg-driver` verifies placeholder conversion, `RETURNING id`, error
   classification and transaction client pinning (mock pool); `pg-integration` runs real service
   flows on `pg-mem`. `pg-mem` lacks window functions and rollback semantics — `breeding.summary`
-  and real rollback still need a live PostgreSQL check (docs/DEPLOYMENT.md step 11).
+  and real rollback still need a live PostgreSQL check (docs/DEPLOYMENT.md step 12).
 
 ## Electron / packaging notes
 
@@ -145,20 +172,23 @@ explicitly approved (Feed & Inventory is the current approved phase).
 - The installed app is on the older code (pre-Inventory) — rebuild/install to test new modules.
 - No auto-update, no code signing (SmartScreen warning expected).
 - **When the online-staging branch is merged into the Electron branch**, the Electron branch's
-  root `package.json` dependencies must include `cors` (the server now requires it) in addition
-  to `better-sqlite3`/`express`. `pg` stays optional and is only loaded when `DATABASE_URL` is
-  set. The server contract Electron relies on is unchanged: synchronous `require('./index')`,
-  `db/connection.js`, and `db/backup.js`.
+  root `package.json` dependencies must include `cors`, `cookie-parser` and
+  `@node-rs/argon2` (the server now requires them) in addition to
+  `better-sqlite3`/`express`. `pg` stays optional and is only loaded when `DATABASE_URL` is
+  set. Auth stays disabled in SQLite/Electron mode by default (`AUTH_ENABLED` off without
+  `DATABASE_URL`). The server contract Electron relies on is unchanged: synchronous
+  `require('./index')`, `db/connection.js`, and `db/backup.js`.
 
 ## Git state
 
 - `master` = validated baseline **96abcdc**, pushed.
 - `feature/electron-packaging` = Electron packaging **449663b** + AGENTS.md **49a0806**, pushed.
   Electron is a preserved milestone/offline edition — do not delete it.
-- `feature/feed-inventory` = **current branch**. Feed & Inventory is committed as **ed967ee** and
-  pushed. The **online staging work (PostgreSQL adapter, PG migrations, config/CORS/health,
-  Render files, docs) is uncommitted** on this branch pending owner approval — do not commit/push
-  without approval.
+- `feature/feed-inventory` = **current branch**. Feed & Inventory is committed as **ed967ee**,
+  the online staging work as **80c6e07** + **46d8c50** (all pushed). The **owner
+  authentication work (Argon2id setup/login, sessions, CSRF, rate limit, 007_auth
+  migrations, login/setup UI, tests, docs) is uncommitted** on this branch pending owner
+  approval — do not commit/push without approval.
 - SQLite + Electron remain the active local edition; the online/PostgreSQL path is now
   implemented for staging. Electron must keep working: `server/index.js` still exports the app
   synchronously, `db/connection.js` still exports a better-sqlite3 handle, and `db/backup.js`
@@ -180,15 +210,16 @@ explicitly approved (Feed & Inventory is the current approved phase).
 9. In PostgreSQL mode the Settings "Download Backup" card is hidden (`/api/meta` exposes
    `capabilities.backup`) and `/api/settings/backup` returns 501; SQLite backup/restore is
    desktop-edition only. No online backup feature yet.
-10. There is **no authentication** yet — staging deployments are open to anyone with the URL.
-   Do not put real farm data online until auth is implemented.
+10. Authentication is **online-only by default** (`AUTH_ENABLED` follows `DATABASE_URL`):
+    SQLite/dev/Electron run with the gate off (endpoints still answer, e.g.
+    `{auth_enabled:false}`), so tests and desktop behave as before. Set
+    `AUTH_ENABLED=true` explicitly to protect a SQLite deployment.
 
 ## Future requirements (do NOT implement without approval)
 
-Authentication (next major phase after online staging), Alerts (in-app, derived from existing
-data), Feed consumption prediction, Reports/exports, Notifications (email/SMS/WhatsApp/push),
-Multi-farm SaaS, Mobile app/PWA, AI features, Milk Collection/Sales tracking, online backup/
-restore, cloud sync, auto-updates.
+Alerts (in-app, derived from existing data), Feed consumption prediction, Reports/exports,
+Notifications (email/SMS/WhatsApp/push), Multi-farm SaaS, Mobile app/PWA, AI features,
+Milk Collection/Sales tracking, online backup/restore, cloud sync, auto-updates.
 
 ## Environment gotchas (Windows PowerShell)
 

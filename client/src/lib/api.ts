@@ -12,11 +12,27 @@ export class ApiError extends Error {
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
+function getCookie(name: string): string | null {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = document.cookie.match(new RegExp('(?:^|; )' + escaped + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(API_BASE + '/api' + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
-  });
+  const method = (options.method || 'GET').toUpperCase();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string> | undefined) || {})
+  };
+
+  if (MUTATING.has(method)) {
+    const csrf = getCookie('dairy_csrf');
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
+
+  const res = await fetch(API_BASE + '/api' + path, { ...options, method, headers, credentials: 'include' });
 
   let body: unknown = null;
   const text = await res.text();
@@ -26,6 +42,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       body = null;
     }
+  }
+
+  if (res.status === 401 && !path.startsWith('/auth/') && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('dairy:unauthorized'));
   }
 
   if (!res.ok) {
