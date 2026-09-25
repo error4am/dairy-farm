@@ -25,7 +25,9 @@ async function migrate(driver) {
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
     await driver.transaction(async (tx) => {
       await tx.exec(sql);
-      await tx.run('INSERT INTO schema_migrations (name) VALUES (?)', [file]);
+      // schema_migrations has no `id` column, so the record must be inserted without
+      // the driver's INSERT...RETURNING id behaviour (tx.run appends it).
+      await tx.all('INSERT INTO schema_migrations (name) VALUES (?)', [file]);
     });
     console.log('Applied PostgreSQL migration: ' + file);
   }

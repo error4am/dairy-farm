@@ -20,8 +20,13 @@ function createFakeDriver() {
     async exec(sql) {
       state.execs.push(sql);
     },
-    async all(sql) {
+    async all(sql, params = []) {
       if (/FROM schema_migrations/i.test(sql)) return [...state.applied].map((name) => ({ name }));
+      if (/INSERT INTO schema_migrations/i.test(sql)) {
+        state.runs.push({ sql, params });
+        state.applied.add(params[0]);
+        return [];
+      }
       return [];
     },
     async get(sql) {
@@ -30,7 +35,6 @@ function createFakeDriver() {
     },
     async run(sql, params = []) {
       state.runs.push({ sql, params });
-      if (/INSERT INTO schema_migrations/i.test(sql)) state.applied.add(params[0]);
       if (/INSERT INTO farms/i.test(sql)) {
         state.farms += 1;
         return { lastInsertRowid: 1, changes: 1 };
@@ -46,7 +50,7 @@ function createFakeDriver() {
       try {
         return await fn({
           exec: (sql) => driver.exec(sql),
-          all: (sql) => driver.all(sql),
+          all: (sql, params) => driver.all(sql, params),
           get: (sql) => driver.get(sql),
           run: (sql, params) => driver.run(sql, params)
         });

@@ -7,3 +7,5 @@ data/*.db-shm
 data/backups/
 .env
 *.log
+.neon
+.env.local

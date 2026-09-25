@@ -10,7 +10,7 @@ const fs = require('fs');
 const dbPath = path.join(os.tmpdir(), `dairy-pg-integration-${process.pid}-${Date.now()}.db`);
 process.env.DB_PATH = dbPath;
 
-const { test, after } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { newDb, DataType } = require('pg-mem');
 
@@ -44,17 +44,31 @@ const pool = new Pool();
 const driver = createPgDriver({ pool });
 
 const PG_DIR = path.join(__dirname, '..', 'db', 'pg', 'migrations');
-for (const file of fs
+const PG_FILES = fs
   .readdirSync(PG_DIR)
   .filter((name) => name.endsWith('.sql'))
-  .sort()) {
-  const sql = fs
-    .readFileSync(path.join(PG_DIR, file), 'utf8')
-    .replace(/to_char\(now\(\) AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS'\)/g, "''");
-  mem.public.none(sql);
-}
+  .sort();
 
-db.setDriver(driver);
+before(async () => {
+  // Mirrors pgInit.migrate exactly: schema_migrations tracking table, then each
+  // migration file's DDL + tracking insert inside one driver transaction. The
+  // tracking insert must go through tx.all — tx.run appends RETURNING id and
+  // schema_migrations has no id column (regression guard for a real-PG failure).
+  await driver.exec(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT '')`
+  );
+  for (const file of PG_FILES) {
+    const sql = fs
+      .readFileSync(path.join(PG_DIR, file), 'utf8')
+      .replace(/to_char\(now\(\) AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS'\)/g, "''");
+    await driver.transaction(async (tx) => {
+      await tx.exec(sql);
+      await tx.all('INSERT INTO schema_migrations (name) VALUES (?)', [file]);
+    });
+  }
+
+  db.setDriver(driver);
+});
 
 const today = todayLocal();
 
@@ -66,6 +80,14 @@ async function seedFarm() {
     'monday'
   ]);
 }
+
+test('migrations applied through the driver record every file in schema_migrations', async () => {
+  const rows = await driver.all('SELECT name FROM schema_migrations ORDER BY name');
+  assert.deepEqual(
+    rows.map((row) => row.name),
+    PG_FILES
+  );
+});
 
 test('services run end to end against a PostgreSQL driver', async () => {
   await seedFarm();
