@@ -17,6 +17,7 @@ const LIST_JOINS = `
   LEFT JOIN employees e ON e.id = ep.employee_id
   LEFT JOIN health_records hr ON hr.transaction_id = t.id
   LEFT JOIN inventory_movements im ON im.transaction_id = t.id
+  LEFT JOIN milk_sales ms ON ms.transaction_id = t.id
 `;
 
 async function findLink(transactionId) {
@@ -38,6 +39,9 @@ async function findLink(transactionId) {
   );
   if (inventoryLink) return { kind: 'inventory_movement', ...inventoryLink };
 
+  const milkSaleLink = await db.get('SELECT id FROM milk_sales WHERE transaction_id = ?', [transactionId]);
+  if (milkSaleLink) return { kind: 'milk_sale', milk_sale_id: milkSaleLink.id };
+
   return null;
 }
 
@@ -54,6 +58,12 @@ async function assertNotLinked(transactionId) {
     throw new HttpError(
       409,
       'This expense is linked to an inventory purchase. Edit or delete it from the Inventory module.'
+    );
+  }
+  if (link.kind === 'milk_sale') {
+    throw new HttpError(
+      409,
+      'This income is linked to a milk sale. Edit or delete it from the Milk Sales module.'
     );
   }
   throw new HttpError(409, 'This expense is linked to a health record. Edit or delete it from the Health module.');
@@ -101,7 +111,8 @@ async function list(query = {}) {
     `SELECT t.*, a.tag_number AS animal_tag, a.name AS animal_name,
             e.id AS employee_id, e.name AS employee_name, e.employee_id AS employee_code,
             ep.type AS payment_type, hr.id AS health_record_id,
-            im.id AS inventory_movement_id, im.item_id AS inventory_item_id
+            im.id AS inventory_movement_id, im.item_id AS inventory_item_id,
+            ms.id AS milk_sale_id
      FROM transactions t
      ${LIST_JOINS}
      WHERE ${whereSql}

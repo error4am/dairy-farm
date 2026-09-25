@@ -22,7 +22,8 @@ export type IconName =
   | 'download'
   | 'alert'
   | 'check'
-  | 'inbox';
+  | 'inbox'
+  | 'cart';
 
 const PATHS: Record<IconName, ReactNode> = {
   dashboard: (
@@ -124,6 +125,13 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M22 12h-6l-2 3h-4l-2-3H2" />
       <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </>
+  ),
+  cart: (
+    <>
+      <circle cx="9" cy="20" r="1.4" />
+      <circle cx="18" cy="20" r="1.4" />
+      <path d="M2 3h3l2.4 11.2a1.6 1.6 0 0 0 1.6 1.3h7.9a1.6 1.6 0 0 0 1.6-1.3L20.5 7H6" />
     </>
   )
 };

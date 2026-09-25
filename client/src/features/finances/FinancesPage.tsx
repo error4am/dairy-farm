@@ -203,6 +203,19 @@ export function FinancesPage() {
             </div>
           );
         }
+        if (t.milk_sale_id) {
+          return (
+            <div className="row-actions">
+              <Link
+                to="/milk-sales"
+                className="btn btn-ghost btn-icon btn-sm"
+                title="Linked to a milk sale — edit it from the Milk Sales module"
+              >
+                <Icon name="pencil" size={15} />
+              </Link>
+            </div>
+          );
+        }
         return (
           <div className="row-actions">
             <button

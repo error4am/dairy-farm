@@ -85,6 +85,21 @@ export function DashboardPage() {
         <StatCard label="Active Items" value={m.inventory.active_items} to="/inventory" />
         <StatCard label="Low Stock" value={m.inventory.low_stock} to="/inventory?status=low" />
         <StatCard label="Out of Stock" value={m.inventory.out_of_stock} to="/inventory?status=out" />
+        <StatCard
+          label="Milk Sold (Today)"
+          value={formatQuantity(m.milk_sales.sold_today, m.unit)}
+          to="/milk-sales"
+        />
+        <StatCard
+          label="Milk Sold (Month)"
+          value={formatQuantity(m.milk_sales.sold_month, m.unit)}
+          to="/milk-sales"
+        />
+        <StatCard
+          label="Milk Sales (Month)"
+          value={formatMoney(m.milk_sales.revenue_month, currency)}
+          to="/milk-sales"
+        />
       </div>
 
       <div className="grid-2">

@@ -8,6 +8,7 @@ const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/health', label: 'Health', icon: 'activity' },
   { to: '/breeding', label: 'Breeding', icon: 'repeat' },
   { to: '/milk', label: 'Milk Production', icon: 'droplet' },
+  { to: '/milk-sales', label: 'Milk Sales', icon: 'cart' },
   { to: '/finances', label: 'Finances', icon: 'dollar' },
   { to: '/inventory', label: 'Inventory', icon: 'box' },
   { to: '/employees', label: 'Employees', icon: 'users' },

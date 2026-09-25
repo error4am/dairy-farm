@@ -15,6 +15,14 @@ function categoryLabel(type, value) {
   return found ? found.label : value;
 }
 
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function round3(value) {
+  return Math.round(value * 1000) / 1000;
+}
+
 async function get() {
   const farm = await settingsService.get();
   const today = todayLocal();
@@ -46,6 +54,17 @@ async function get() {
   const employees = await employeeService.summary();
   const inventory = await inventoryService.summary();
   const laborCost = (await financeService.totals({ from: startOfMonth(today), to: today, category: 'labor' })).expenses;
+
+  const todaySales = await db.get(
+    `SELECT COALESCE(SUM(litres), 0) AS litres, COALESCE(SUM(revenue), 0) AS revenue
+     FROM milk_sales WHERE farm_id = ? AND date = ?`,
+    [FARM_ID, today]
+  );
+  const monthSales = await db.get(
+    `SELECT COALESCE(SUM(litres), 0) AS litres, COALESCE(SUM(revenue), 0) AS revenue
+     FROM milk_sales WHERE farm_id = ? AND date >= ? AND date <= ?`,
+    [FARM_ID, startOfMonth(today), today]
+  );
 
   const milk = await db.all(
     `SELECT r.id, r.date, r.session, r.quantity, r.unit, r.created_at,
@@ -138,6 +157,12 @@ async function get() {
         active_items: inventory.active_count,
         low_stock: inventory.low_stock_count,
         out_of_stock: inventory.out_of_stock_count
+      },
+      milk_sales: {
+        sold_today: round3(todaySales.litres),
+        revenue_today: round2(todaySales.revenue),
+        sold_month: round3(monthSales.litres),
+        revenue_month: round2(monthSales.revenue)
       }
     },
     recent_activity: activity,

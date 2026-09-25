@@ -18,7 +18,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Vite (5173) + API (4000) with proxy — browser development |
-| `npm test` | Full suite: 166 server + 5 client = 171 tests (SQLite mode) |
+| `npm test` | Full suite: 180 server + 5 client = 185 tests (SQLite mode) |
 | `npm run build` | Production client build (`client/dist`) |
 | `npm start` | Plain server (serves built client) |
 | `npm run db:reset` | Deletes and re-seeds the DB at `DB_PATH` (stop the server first) |
@@ -68,7 +68,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 - All SQL parameterized; sort columns use whitelists. Multi-step writes use `db.transaction`.
 - Migrations: `server/db/migrations/NNN_name.sql` (SQLite), applied in order, tracked in
   `schema_migrations`. Current: 001_init, 002_health, 003_breeding, 004_employees,
-  005_transaction_link_indexes, 006_inventory, 007_auth. PostgreSQL mirrors them 1:1 in
+  005_transaction_link_indexes, 006_inventory, 007_auth, 008_milk_sales. PostgreSQL mirrors them 1:1 in
   `server/db/pg/migrations/` with the same names, applied automatically at startup by
   `server/db/pgInit.js` (run by `db.ready()`), followed by a farm/user seed when empty.
   PG keeps TEXT dates/timestamps, `INTEGER` 0/1 booleans and `SERIAL` ids (int4) so API
@@ -77,6 +77,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
   - `health_records.transaction_id` → one Medicine expense; edit/clear/delete propagate.
   - `employee_payments.transaction_id` → one Labor expense; edit/delete propagate.
   - `inventory_movements.transaction_id` → one Feed expense (purchases only); edit/clear/delete propagate.
+  - `milk_sales.transaction_id` → one Milk Sale income (category `milk_sale`); edit/delete propagate.
   - Finance **cannot** edit or delete linked transactions (409) — edit from the source module.
     The Finance UI shows a pencil link to the source instead of edit/delete.
 - Withdrawal enforcement is server-side: milk create/edit blocked while `withdrawal_until >= milk date`.
@@ -141,18 +142,51 @@ explicitly approved (Feed & Inventory is the current approved phase).
   filters, items table, recent movements) and item detail page (stat cards, stock breakdown,
   movement history with filters + pagination, Record Movement). Movement form has "Save & add another".
 
+## Milk Sales & Price History module
+
+Separate from Milk Production (no changes to `milk-records`). No `buyer` field (scope control).
+
+- **`milk_prices`**: farm_id, price_per_litre (> 0), effective_date, created_at,
+  `UNIQUE(farm_id, effective_date)`. History is listed latest-first; future dates are allowed
+  (scheduled prices). Price resolution for a date: latest `effective_date <= date`, tie-break
+  `id DESC`; none → `400 details.date = 'No milk price is set for this date. Add a price first.'`.
+- **`milk_sales`**: farm_id, date, litres (> 0), price_per_litre (> 0), revenue (≥ 0), notes,
+  `transaction_id → transactions ON DELETE SET NULL`, timestamps.
+- **Server-authoritative pricing**: create always resolves the price from history for the sale
+  date; a client-supplied `price_per_litre` in a sale body is validated (> 0) but **never used**
+  as the effective price. `revenue = round2(litres × price)`; description
+  `Milk sale: <litres> <unit> @ <price>/<unit>`.
+- **Edit rule**: same date → keep the stored price (history edits/deletes never rewrite
+  historical sales); date changed → resolve for the new date (400 if none). Update reuses the
+  linked transaction (recreating it if it was manually deleted); delete removes sale + linked
+  income in one transaction.
+- Finance cannot edit/delete a linked sale income (409 `/milk sale/i`); the Finance UI pencil
+  links to `/milk-sales` instead. Reuses the existing `milk_sale` income category.
+- **API**: `/api/milk-sales` (`GET /`, `GET /summary`, POST, PUT, DELETE) and `/api/milk-prices`
+  (`GET /`, `GET /applicable?date=`, POST, PUT, DELETE). `summary` returns `unit`, `currency`,
+  `current_price`, `range {produced, sold, remaining, revenue, sales_count}` (produced from
+  `milk_records`, sold from `milk_sales` — the two stay fully separate) and `today/week/month`.
+  `/api/dashboard` exposes `metrics.milk_sales.{sold_today, revenue_today, sold_month, revenue_month}`.
+- **UI**: sidebar **Milk Sales** → `/milk-sales` (cart icon): stat cards, period presets, sales
+  table + pagination, price history card, `SaleForm`/`PriceForm` modals. The sale form shows the
+  resolved price as read-only and disables save when no price applies to the date.
+- Sale dates: server accepts any valid date (client caps at today); prices may be future-dated.
+
 ## Tests
 
 - Server (`node --test`, temp DBs via `DB_PATH` set before requires): `api-consistency`,
   `calculations`, `health`, `breeding`, `employees`, `linked-transactions`, `input-hardening`,
-  `inventory`, `backup-restore`, `backup-failures`, `server-bind`, `health-check`, `config`,
-  `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`, `pg-init`, `auth`.
+  `inventory`, `milk-sales`, `backup-restore`, `backup-failures`, `server-bind`, `health-check`,
+  `config`, `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`, `pg-init`, `auth`.
   `auth.test.js` sets `AUTH_ENABLED=true` + `LOGIN_MAX_ATTEMPTS=5` before requires and
   covers setup/login/logout/me, generic 401s, Argon2id storage, session + CSRF cookies,
   401/403/429 paths, expired sessions, public health and protected farm workflows.
+  `milk-sales.test.js` covers price history CRUD/resolution, server-authoritative revenue,
+  exactly-one linked income, edit/delete propagation, production/sales separation, dashboard
+  metrics, HTTP validation and orphan/duplicate integrity checks.
 - Client: `client/tests/plural.test.js`.
 - Never weaken/delete tests. Fix genuine defects and add a regression test.
-- Expected: **166 server + 5 client = 171 passing, 0 failed, 0 skipped** (SQLite mode).
+- Expected: **180 server + 5 client = 185 passing, 0 failed, 0 skipped** (SQLite mode).
 - PG coverage: `pg-schema` asserts table/column/FK/unique/index parity between the SQLite and
   PostgreSQL migrations; `pg-driver` verifies placeholder conversion, `RETURNING id`, error
   classification and transaction client pinning (mock pool); `pg-integration` runs real service
@@ -185,10 +219,11 @@ explicitly approved (Feed & Inventory is the current approved phase).
 - `feature/electron-packaging` = Electron packaging **449663b** + AGENTS.md **49a0806**, pushed.
   Electron is a preserved milestone/offline edition — do not delete it.
 - `feature/feed-inventory` = **current branch**. Feed & Inventory is committed as **ed967ee**,
-  the online staging work as **80c6e07** + **46d8c50** (all pushed). The **owner
-  authentication work (Argon2id setup/login, sessions, CSRF, rate limit, 007_auth
-  migrations, login/setup UI, tests, docs) is uncommitted** on this branch pending owner
-  approval — do not commit/push without approval.
+  the online staging work as **80c6e07** + **46d8c50**, owner authentication (Argon2id
+  setup/login, sessions, CSRF, rate limit, 007_auth migrations, login/setup UI, tests, docs)
+  as **34582f4**, and Milk Sales + Price History (008_milk_sales migrations, price/sale
+  services + routes, UI, tests, docs) as the tip commit — all pushed. Do not commit/push
+  further work without owner approval.
 - SQLite + Electron remain the active local edition; the online/PostgreSQL path is now
   implemented for staging. Electron must keep working: `server/index.js` still exports the app
   synchronously, `db/connection.js` still exports a better-sqlite3 handle, and `db/backup.js`
@@ -219,7 +254,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 
 Alerts (in-app, derived from existing data), Feed consumption prediction, Reports/exports,
 Notifications (email/SMS/WhatsApp/push), Multi-farm SaaS, Mobile app/PWA, AI features,
-Milk Collection/Sales tracking, online backup/restore, cloud sync, auto-updates.
+online backup/restore, cloud sync, auto-updates.
 
 ## Environment gotchas (Windows PowerShell)
 

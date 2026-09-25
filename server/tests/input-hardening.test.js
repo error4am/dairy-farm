@@ -51,7 +51,9 @@ test('impossible calendar dates are rejected on every date field', async () => {
     ],
     ['breeding heat_date', '/breeding-records', { animal_id: animalId, heat_date: '2026-02-30' }, 'heat_date'],
     ['employee joining_date', '/employees', { name: 'V', pay_type: 'monthly', salary: 1, joining_date: '2026-02-30' }, 'joining_date'],
-    ['payment date', '/employee-payments', { employee_id: 1, date: '2026-02-30', type: 'salary', amount: 1 }, 'date']
+    ['payment date', '/employee-payments', { employee_id: 1, date: '2026-02-30', type: 'salary', amount: 1 }, 'date'],
+    ['milk sale date', '/milk-sales', { date: '2026-02-30', litres: 5 }, 'date'],
+    ['milk price date', '/milk-prices', { price_per_litre: 100, effective_date: '2026-02-30' }, 'effective_date']
   ];
 
   for (const [label, urlPath, body, field] of cases) {
@@ -116,6 +118,7 @@ test('transaction-link indexes exist for linked lookups', () => {
     .map((row) => row.name);
   assert.ok(names.includes('idx_health_transaction'), 'health_records.transaction_id index exists');
   assert.ok(names.includes('idx_emp_pay_transaction'), 'employee_payments.transaction_id index exists');
+  assert.ok(names.includes('idx_milk_sales_transaction'), 'milk_sales.transaction_id index exists');
 });
 
 test('non-numeric filters never produce server errors', async () => {

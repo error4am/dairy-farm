@@ -60,6 +60,45 @@ export interface MilkRecord {
   animal_name?: string | null;
 }
 
+export interface MilkPrice {
+  id: number;
+  farm_id: number;
+  price_per_litre: number;
+  effective_date: string;
+  created_at: string;
+}
+
+export interface MilkSale {
+  id: number;
+  farm_id: number;
+  date: string;
+  litres: number;
+  price_per_litre: number;
+  revenue: number;
+  notes: string | null;
+  transaction_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MilkSaleSummary {
+  unit: string;
+  currency: string;
+  current_price: number | null;
+  range: {
+    from: string | null;
+    to: string | null;
+    produced: number;
+    sold: number;
+    remaining: number;
+    revenue: number;
+    sales_count: number;
+  };
+  today: { sold: number; revenue: number; sales_count: number };
+  week: { sold: number; revenue: number; sales_count: number };
+  month: { sold: number; revenue: number; sales_count: number };
+}
+
 export interface Transaction {
   id: number;
   farm_id: number;
@@ -80,6 +119,7 @@ export interface Transaction {
   health_record_id?: number | null;
   inventory_movement_id?: number | null;
   inventory_item_id?: number | null;
+  milk_sale_id?: number | null;
 }
 
 export interface Employee {
@@ -340,6 +380,12 @@ export interface Dashboard {
       active_items: number;
       low_stock: number;
       out_of_stock: number;
+    };
+    milk_sales: {
+      sold_today: number;
+      revenue_today: number;
+      sold_month: number;
+      revenue_month: number;
     };
   };
   recent_activity: {

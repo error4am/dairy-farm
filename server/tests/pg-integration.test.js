@@ -29,6 +29,8 @@ const paymentService = require('../services/paymentService');
 const inventoryService = require('../services/inventoryService');
 const movementService = require('../services/inventoryMovementService');
 const breedingService = require('../services/breedingService');
+const milkPriceService = require('../services/milkPriceService');
+const milkSaleService = require('../services/milkSaleService');
 const { todayLocal } = require('../utils/date');
 
 const mem = newDb();
@@ -175,6 +177,28 @@ test('services run end to end against a PostgreSQL driver', async () => {
   const breedingList = await breedingService.list({});
   assert.equal(breedingList.total, 1);
   assert.equal(breedingList.items[0].animal_tag, 'PG-1');
+
+  const price = await milkPriceService.create({ price_per_litre: 210, effective_date: today });
+  assert.equal(price.price_per_litre, 210);
+
+  const sale = await milkSaleService.create({ date: today, litres: 40 });
+  assert.equal(sale.price_per_litre, 210, 'sale resolves the price for its date');
+  assert.equal(Math.round(sale.revenue * 100) / 100, 8400, 'revenue is litres times price');
+  assert.ok(sale.transaction_id, 'sale links a finance income');
+
+  totals = await financeService.totals();
+  assert.equal(totals.income, 8400, 'milk sale posts income through the driver');
+  assert.equal(totals.net, -1500 + 8400);
+
+  const saleTxId = sale.transaction_id;
+  const editedSale = await milkSaleService.update(sale.id, { date: today, litres: 50 });
+  assert.equal(editedSale.transaction_id, saleTxId, 'editing the sale reuses its transaction');
+  totals = await financeService.totals();
+  assert.equal(totals.income, 10500, 'editing the sale updates the income, never duplicates it');
+
+  await milkSaleService.remove(sale.id);
+  totals = await financeService.totals();
+  assert.equal(totals.income, 0, 'deleting the sale removes its income');
 });
 
 test('failed statements inside a transaction surface as errors without corrupting state', async () => {

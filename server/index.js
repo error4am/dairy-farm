@@ -65,6 +65,8 @@ app.use('/api/employee-payments', require('./routes/employeePayments'));
 app.use('/api/inventory-items', require('./routes/inventoryItems'));
 app.use('/api/inventory-movements', require('./routes/inventoryMovements'));
 app.use('/api/milk-records', require('./routes/milk'));
+app.use('/api/milk-sales', require('./routes/milkSales'));
+app.use('/api/milk-prices', require('./routes/milkPrices'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/settings', require('./routes/settings'));

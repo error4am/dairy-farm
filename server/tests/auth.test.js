@@ -275,6 +275,23 @@ test('logout destroys the session', async () => {
   assert.deepEqual(me.data, { authenticated: false });
 });
 
+test('milk sales API requires a session', async () => {
+  const listed = await req('GET', '/api/milk-sales');
+  assert.equal(listed.status, 401, 'milk sales list requires a session');
+
+  const created = await req('POST', '/api/milk-prices', { price_per_litre: 200, effective_date: '2026-01-15' });
+  assert.equal(created.status, 401, 'milk price creation requires a session');
+
+  const signedIn = await login(OWNER_EMAIL, OWNER_PASSWORD);
+  assert.equal(signedIn.status, 200, 'owner can log back in');
+
+  const prices = await req('GET', '/api/milk-prices');
+  assert.equal(prices.status, 200, 'milk prices are readable after login');
+  const sales = await req('GET', '/api/milk-sales');
+  assert.equal(sales.status, 200, 'milk sales are readable after login');
+  assert.equal(Array.isArray(sales.data.items), true, 'the sales payload keeps its shape');
+});
+
 test('expired sessions are rejected', async () => {
   const token = 'expired-session-token-for-testing';
   const id = crypto.createHash('sha256').update(token).digest('hex');
