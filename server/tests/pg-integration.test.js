@@ -274,6 +274,45 @@ test('dashboard milk production trend runs through the PostgreSQL driver', async
   );
 });
 
+test('dashboard revenue and expenses trend runs through the PostgreSQL driver', async () => {
+  await financeService.create({ date: today, type: 'income', category: 'other_income', amount: 600 });
+
+  const series = await dashboardService.revenueExpenses(7);
+  assert.equal(series.range, 7, 'the requested range is echoed');
+  assert.equal(series.currency, 'PKR', 'the farm currency comes through the driver');
+  assert.equal(series.data.length, 7, 'one entry per day');
+  assert.equal(series.data[series.data.length - 1].date, today, 'the window ends today');
+  assert.equal(series.data[0].revenue, 0, 'empty days are zero-filled');
+  assert.equal(series.data[0].expenses, 0, 'empty days are zero-filled');
+
+  const todayEntry = series.data[series.data.length - 1];
+  assert.equal(todayEntry.revenue, 600, 'income aggregates as revenue');
+  assert.equal(todayEntry.expenses, 1500, 'labor 1000 + feed 500 aggregate as expenses');
+  assert.equal(typeof todayEntry.revenue, 'number', 'PG values stay JSON numbers');
+  assert.equal(typeof todayEntry.expenses, 'number', 'PG values stay JSON numbers');
+  assert.equal(series.totals.net, 600 - 1500, 'net is revenue minus expenses');
+
+  const finance = await financeService.totals({ from: series.data[0].date, to: today });
+  assert.equal(series.totals.revenue, finance.income, 'trend revenue matches finance income');
+  assert.equal(series.totals.expenses, finance.expenses, 'trend expenses match finance expenses');
+  assert.equal(series.totals.net, finance.net, 'trend net matches finance net');
+
+  const raw = await driver.get(
+    `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount END), 0) AS income,
+            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount END), 0) AS expenses
+     FROM transactions WHERE farm_id = ? AND date >= ? AND date <= ?`,
+    [1, series.data[0].date, today]
+  );
+  assert.ok(Math.abs(series.totals.revenue - Number(raw.income)) <= 0.01, 'revenue matches the raw driver sum');
+  assert.ok(Math.abs(series.totals.expenses - Number(raw.expenses)) <= 0.01, 'expenses match the raw driver sum');
+
+  await assert.rejects(
+    () => dashboardService.revenueExpenses(13),
+    (err) => err.status === 400 && /7, 30 or 90/.test(err.message),
+    'invalid ranges are rejected through the driver'
+  );
+});
+
 test('failed statements inside a transaction surface as errors without corrupting state', async () => {
   const before = await financeService.totals();
 

@@ -372,6 +372,21 @@ test('dashboard milk production API requires a session', async () => {
   assert.equal(typeof series.data.unit, 'string', 'the milk unit is returned');
 });
 
+test('dashboard revenue & expenses API requires a session', async () => {
+  const noSession = await fetch(base + '/api/dashboard/revenue-expenses?range=7');
+  assert.equal(noSession.status, 401, 'revenue & expenses trend requires a session');
+
+  const signedIn = await login(OWNER_EMAIL, OWNER_PASSWORD);
+  assert.equal(signedIn.status, 200, 'owner can log back in');
+
+  const series = await req('GET', '/api/dashboard/revenue-expenses?range=7');
+  assert.equal(series.status, 200, 'trend is readable after login');
+  assert.equal(series.data.range, 7, 'the requested range is echoed');
+  assert.equal(series.data.data.length, 7, 'seven days returned');
+  assert.equal(typeof series.data.currency, 'string', 'the farm currency is returned');
+  assert.deepEqual(Object.keys(series.data.totals), ['revenue', 'expenses', 'net']);
+});
+
 test('expired sessions are rejected', async () => {
   const token = 'expired-session-token-for-testing';
   const id = crypto.createHash('sha256').update(token).digest('hex');

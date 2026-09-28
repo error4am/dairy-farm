@@ -434,6 +434,13 @@ export interface MilkProductionSeries {
   data: { date: string; litres: number }[];
 }
 
+export interface RevenueExpensesSeries {
+  range: number;
+  currency: string;
+  data: { date: string; revenue: number; expenses: number }[];
+  totals: { revenue: number; expenses: number; net: number };
+}
+
 export interface MilkSummary {
   unit: string;
   range: {

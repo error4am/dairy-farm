@@ -199,4 +199,42 @@ async function milkProduction(range) {
   };
 }
 
-module.exports = { get, milkProduction };
+const REVENUE_EXPENSE_RANGES = [7, 30, 90];
+const REVENUE_EXPENSE_DEFAULT_RANGE = 30;
+
+async function revenueExpenses(range) {
+  const requested = range === undefined ? REVENUE_EXPENSE_DEFAULT_RANGE : Number(range);
+  if (!REVENUE_EXPENSE_RANGES.includes(requested)) {
+    throw new HttpError(400, 'Range must be one of 7, 30 or 90 days.', {
+      range: 'Range must be one of 7, 30 or 90 days.'
+    });
+  }
+  const farm = await settingsService.get();
+  const today = todayLocal();
+  const dates = lastNDates(requested, today);
+  const rows = await db.all(
+    `SELECT date, type, SUM(amount) AS total FROM transactions
+     WHERE farm_id = ? AND date >= ? AND date <= ?
+     GROUP BY date, type`,
+    [FARM_ID, dates[0], today]
+  );
+  const byDate = new Map(dates.map((date) => [date, { revenue: 0, expenses: 0 }]));
+  for (const row of rows) {
+    const bucket = byDate.get(row.date);
+    if (!bucket) continue;
+    if (row.type === 'income') bucket.revenue = round2(Number(row.total));
+    else if (row.type === 'expense') bucket.expenses = round2(Number(row.total));
+  }
+
+  const data = dates.map((date) => ({ date, ...byDate.get(date) }));
+  const totals = {
+    revenue: round2(data.reduce((acc, d) => acc + d.revenue, 0)),
+    expenses: round2(data.reduce((acc, d) => acc + d.expenses, 0)),
+    net: 0
+  };
+  totals.net = round2(totals.revenue - totals.expenses);
+
+  return { range: requested, currency: farm.currency, data, totals };
+}
+
+module.exports = { get, milkProduction, revenueExpenses };

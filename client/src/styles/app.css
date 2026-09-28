@@ -961,3 +961,94 @@
   font-weight: 600;
   color: var(--text);
 }
+
+/* ---------- Revenue & expenses ---------- */
+
+.finance-summary {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.finance-sum {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.finance-sum-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.finance-sum-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.finance-sum.positive .finance-sum-value {
+  color: var(--accent);
+}
+
+.finance-sum.negative .finance-sum-value {
+  color: var(--danger);
+}
+
+.finance-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.finance-dot.revenue {
+  background: var(--accent);
+}
+
+.finance-dot.expenses {
+  background: var(--danger);
+}
+
+.fin-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fin-line-revenue {
+  stroke: var(--accent);
+}
+
+.fin-line-expenses {
+  stroke: var(--danger);
+}
+
+.fin-dot-revenue {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.fin-dot-expenses {
+  fill: var(--danger);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.trend-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}

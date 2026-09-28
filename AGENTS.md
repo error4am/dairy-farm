@@ -18,7 +18,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Vite (5173) + API (4000) with proxy — browser development |
-| `npm test` | Full suite: 223 server + 5 client = 228 tests (SQLite mode) |
+| `npm test` | Full suite: 237 server + 5 client = 242 tests (SQLite mode) |
 | `npm run build` | Production client build (`client/dist`) |
 | `npm start` | Plain server (serves built client) |
 | `npm run db:reset` | Deletes and re-seeds the DB at `DB_PATH` (stop the server first) |
@@ -270,24 +270,63 @@ Real daily milk-production series for the owner dashboard — no chart library (
   Staging verified read-only: 45/45 checks (401 gate, 7/30/90 shapes, 400 validation, raw-SQL
   day-by-day cross-check, initial == final counts, owner byte-identical).
 
+## Revenue & Expenses (Dashboard 2.0)
+
+Two-series revenue/expenses time-series on the owner dashboard, derived from the Finance
+ledger — no new data model, no chart library.
+
+- **Source of truth**: the `transactions` table (`type IN ('income','expense')`, grouped by
+  `date`). Milk sale → one `milk_sale` income, employee payment → one `labor` expense, health
+  → `medicine`, inventory purchase → `feed` — so `GROUP BY date, type` never double counts by
+  construction (milk sales included, verified by test).
+- **API**: `GET /api/dashboard/revenue-expenses?range=7|30|90` (default 30 when omitted; any
+  other value, incl. non-numeric → `400 {error, details.range}` — same contract as
+  `milk-production`). Response `{range, currency, data: [{date, revenue, expenses}],
+  totals: {revenue, expenses, net}}` — zero-filled ascending entries ending today
+  (`lastNDates`), per-day `round2(SUM(amount))` by type, `currency` from the farm settings,
+  `totals` computed from the rounded daily series so `totals == sum(data)` exactly and
+  `net = revenue − expenses` (negative nets are valid and rendered). Service:
+  `dashboardService.revenueExpenses(range)`; route registered before `GET /` in
+  `routes/dashboard.js`. Agreement: totals match `financeService.totals({from,to})` and
+  `GET /api/transactions/summary?from&to` for the same window (HTTP-verified in staging).
+- **UI**: `client/src/features/dashboard/RevenueExpensesTrend.tsx`, rendered after
+  `<MilkProductionTrend />` on `DashboardPage`. Hand-rolled two-series SVG line chart
+  (revenue `--accent`, expenses `--danger`, no area fill), 7/30/90-day toggle, compact
+  Revenue/Expenses/Net summary row above the chart (net tinted positive/negative), tooltip
+  with date + both values (anchored on the higher series, flip-below near the top), loading
+  spinner, error box, all-zero `EmptyState`. Y-axis labels use compact notation (84K/1.2M);
+  tooltips/summary use `formatMoney(…, currency)`. Styles: "Revenue & expenses" section in
+  `styles/app.css` (`.finance-summary/.finance-sum/.finance-dot`, `.fin-line-*`, `.fin-dot-*`,
+  `.trend-tip-row`). Dedicated component — the committed milk chart was not refactored
+  (lower regression risk; small chart-code duplication is accepted).
+- **Tests**: `dashboard-revenue-expenses.test.js` (empty window, 7/30/90 windows, 400s,
+  same-day aggregation + classification, zero-revenue/zero-expense days, rounding, totals ==
+  series, positive 7-day and negative 30-day nets, financeService + `/transactions/summary`
+  agreement, milk-sale counted exactly once, farm scoping, HTTP shapes, dashboard/milk-trend
+  regression), the session case in `auth.test.js`, the PG driver flow in `pg-integration.test.js`.
+  Staging verified read-only: **76/76 checks** (401 gate, 7/30/90 shapes, 400 validation,
+  raw-SQL day-by-day cross-check, zero-filled days, finance-summary agreement, dashboard +
+  milk-trend regression, initial == final counts, transactions fingerprint byte-identical,
+  owner byte-identical).
+
 ## Tests
 
 - Server (`node --test`, temp DBs via `DB_PATH` set before requires): `api-consistency`,
   `calculations`, `health`, `breeding`, `employees`, `linked-transactions`, `input-hardening`,
   `inventory`, `milk-sales`, `gestation`, `backup-restore`, `backup-failures`, `server-bind`,
   `health-check`, `config`, `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`,
-  `pg-init`, `auth`, `alerts`, `dashboard-milk-trend`.
+  `pg-init`, `auth`, `alerts`, `dashboard-milk-trend`, `dashboard-revenue-expenses`.
   `auth.test.js` sets `AUTH_ENABLED=true` + `LOGIN_MAX_ATTEMPTS=5` before requires and
   covers setup/login/logout/me, generic 401s, Argon2id storage, session + CSRF cookies,
   401/403/429 paths, expired sessions, public health, protected farm workflows, the
   alerts API (401 without a session, 403 without/with a wrong CSRF token, read/resolve
-  with a valid token) and the dashboard milk-production session gate.
+  with a valid token) and the dashboard milk-production / revenue-expenses session gates.
   `milk-sales.test.js` covers price history CRUD/resolution, server-authoritative revenue,
   exactly-one linked income, edit/delete propagation, production/sales separation, dashboard
   metrics, HTTP validation and orphan/duplicate integrity checks.
 - Client: `client/tests/plural.test.js`.
 - Never weaken/delete tests. Fix genuine defects and add a regression test.
-- Expected: **223 server + 5 client = 228 passing, 0 failed, 0 skipped** (SQLite mode).
+- Expected: **237 server + 5 client = 242 passing, 0 failed, 0 skipped** (SQLite mode).
 - PG coverage: `pg-schema` asserts table/column/FK/unique/index parity between the SQLite and
   PostgreSQL migrations; `pg-driver` verifies placeholder conversion, `RETURNING id`, error
   classification and transaction client pinning (mock pool); `pg-integration` runs real service
@@ -319,16 +358,17 @@ Real daily milk-production series for the owner dashboard — no chart library (
 - `master` = validated baseline **96abcdc**, pushed.
 - `feature/electron-packaging` = Electron packaging **449663b** + AGENTS.md **49a0806**, pushed.
   Electron is a preserved milestone/offline edition — do not delete it.
-- `feature/feed-inventory` = **current branch**, tip **3785417** (all pushed). Feed & Inventory
+- `feature/feed-inventory` = **current branch**, tip **856cb71** (all pushed). Feed & Inventory
   is committed as **ed967ee**, the online staging work as **80c6e07** + **46d8c50**, owner
   authentication (Argon2id setup/login, sessions, CSRF, rate limit, 007_auth migrations,
   login/setup UI, tests, docs) as **34582f4**, Milk Sales + Price History (008_milk_sales
   migrations, price/sale services + routes, UI, tests, docs) as **83e2332**, gestation
   settings (009) as **9639041**, the CSRF-duplication / milk-remaining fixes as **6d906a0**,
   and the in-app Alerts engine (010_alerts, alertService, routes, bell UI, tests) as
-  **3785417**. The Milk Production Trend (dashboard endpoint + SVG chart + tests) is currently
-  **uncommitted** working-tree work. Do not commit/push further work without
-  owner approval.
+  **3785417**. The Milk Production Trend (dashboard endpoint + SVG chart + tests) is
+  committed as **856cb71**. The Revenue & Expenses trend (dashboard endpoint + two-series
+  SVG chart + tests + docs) is currently **uncommitted** working-tree work. Do not
+  commit/push further work without owner approval.
 - SQLite + Electron remain the active local edition; the online/PostgreSQL path is now
   implemented for staging. Electron must keep working: `server/index.js` still exports the app
   synchronously, `db/connection.js` still exports a better-sqlite3 handle, and `db/backup.js`

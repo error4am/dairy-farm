@@ -11,6 +11,7 @@ import { useApi } from '../../lib/useApi';
 import { useMeta } from '../../lib/MetaContext';
 import { formatMoney, formatQuantity, formatRelative, trimNumber } from '../../lib/format';
 import { MilkProductionTrend } from './MilkProductionTrend';
+import { RevenueExpensesTrend } from './RevenueExpensesTrend';
 import type { Animal, Dashboard } from '../../lib/types';
 
 type QuickAction = 'animal' | 'milk' | 'income' | 'expense' | null;
@@ -104,6 +105,8 @@ export function DashboardPage() {
       </div>
 
       <MilkProductionTrend />
+
+      <RevenueExpensesTrend />
 
       <div className="grid-2">
         <div className="card">
