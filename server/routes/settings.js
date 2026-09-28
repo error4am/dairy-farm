@@ -11,6 +11,9 @@ const router = express.Router();
 router.get('/', asyncHandler(async (req, res) => res.json(await service.get())));
 router.put('/', asyncHandler(async (req, res) => res.json(await service.update(req.body))));
 
+router.get('/breeding', asyncHandler(async (req, res) => res.json(await service.getBreeding())));
+router.put('/breeding', asyncHandler(async (req, res) => res.json(await service.updateBreeding(req.body))));
+
 router.get('/backup', (req, res) => {
   if (db.isPostgres) {
     return res.status(501).json({ error: 'Backups are available in the desktop edition only.' });

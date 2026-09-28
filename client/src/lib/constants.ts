@@ -201,6 +201,8 @@ export const FALLBACK_META: Meta = {
     milk_unit: 'L',
     week_start: 'monday',
     gestation_days: 283,
+    cow_gestation_days: 283,
+    buffalo_gestation_days: 310,
     created_at: '',
     updated_at: ''
   }

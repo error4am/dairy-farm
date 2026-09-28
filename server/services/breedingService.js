@@ -4,6 +4,7 @@ const { HttpError } = require('../middleware/errors');
 const { validate } = require('../middleware/validate');
 const { SERVICE_METHODS, PREGNANCY_RESULTS, CALVING_OUTCOMES } = require('../constants/enums');
 const { todayLocal, addDays } = require('../utils/date');
+const settingsService = require('./settingsService');
 
 function clampLimit(value, fallback = 25, max = 200) {
   const n = Number(value);
@@ -145,7 +146,7 @@ async function currentForAnimal(animalId) {
 }
 
 async function assertAnimal(animalId) {
-  const animal = await db.get('SELECT id, tag_number, name FROM animals WHERE id = ? AND farm_id = ?', [
+  const animal = await db.get('SELECT id, tag_number, name, type FROM animals WHERE id = ? AND farm_id = ?', [
     animalId,
     FARM_ID
   ]);
@@ -211,7 +212,7 @@ function validateRecord(body) {
     if (!data.pregnancy_check_date) {
       invalid('pregnancy_check_date', 'Pregnancy check date is required for a confirmed pregnancy.');
     }
-    if (!data.expected_calving_date) {
+    if (!data.expected_calving_date && !data.expected_calving_estimated) {
       invalid('expected_calving_date', 'Expected calving date is required for a confirmed pregnancy.');
     }
   } else {
@@ -235,9 +236,33 @@ function validateRecord(body) {
   return data;
 }
 
+async function applyGestation(data, animal, existing) {
+  if (data.pregnancy_result !== 'pregnant') return;
+
+  const settings = await settingsService.getBreeding();
+  let gestation = null;
+  if (animal.type === 'cow') gestation = settings.cow_gestation_days;
+  else if (animal.type === 'buffalo') gestation = settings.buffalo_gestation_days;
+  else invalid('animal_id', `Gestation duration is not configured for animal type "${animal.type || 'unknown'}".`);
+
+  if (data.expected_calving_estimated === 1 && data.service_date) {
+    const serviceUnchanged = existing && existing.service_date === data.service_date;
+    if (existing && existing.expected_calving_date && serviceUnchanged) {
+      data.expected_calving_date = existing.expected_calving_date;
+    } else {
+      data.expected_calving_date = addDays(data.service_date, gestation);
+    }
+  }
+
+  if (!data.expected_calving_date) {
+    invalid('expected_calving_date', 'Expected calving date is required for a confirmed pregnancy.');
+  }
+}
+
 async function create(body) {
   const data = validateRecord(body);
-  await assertAnimal(data.animal_id);
+  const animal = await assertAnimal(data.animal_id);
+  await applyGestation(data, animal, null);
 
   const info = await db.run(
     `INSERT INTO breeding_records
@@ -271,7 +296,8 @@ async function update(id, body) {
   if (!existing) throw new HttpError(404, 'Breeding record not found.');
 
   const data = validateRecord(body);
-  await assertAnimal(data.animal_id);
+  const animal = await assertAnimal(data.animal_id);
+  await applyGestation(data, animal, existing);
 
   await db.run(
     `UPDATE breeding_records SET

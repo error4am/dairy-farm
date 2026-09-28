@@ -275,6 +275,25 @@ test('logout destroys the session', async () => {
   assert.deepEqual(me.data, { authenticated: false });
 });
 
+test('gestation settings API requires a session', async () => {
+  const read = await req('GET', '/api/settings/breeding');
+  assert.equal(read.status, 401, 'gestation settings require a session');
+
+  const write = await req('PUT', '/api/settings/breeding', { cow_gestation_days: 283, buffalo_gestation_days: 310 });
+  assert.equal(write.status, 401, 'gestation settings updates require a session');
+
+  const signedIn = await login(OWNER_EMAIL, OWNER_PASSWORD);
+  assert.equal(signedIn.status, 200, 'owner can log in');
+
+  const after = await req('GET', '/api/settings/breeding');
+  assert.equal(after.status, 200, 'gestation settings are readable after login');
+  assert.equal(after.data.cow_gestation_days, 283, 'cow gestation default');
+  assert.equal(after.data.buffalo_gestation_days, 310, 'buffalo gestation default');
+
+  const out = await req('POST', '/api/auth/logout');
+  assert.equal(out.status, 200, 'logout so later tests start unauthenticated');
+});
+
 test('milk sales API requires a session', async () => {
   const listed = await req('GET', '/api/milk-sales');
   assert.equal(listed.status, 401, 'milk sales list requires a session');

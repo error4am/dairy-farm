@@ -18,7 +18,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Vite (5173) + API (4000) with proxy — browser development |
-| `npm test` | Full suite: 180 server + 5 client = 185 tests (SQLite mode) |
+| `npm test` | Full suite: 196 server + 5 client = 201 tests (SQLite mode) |
 | `npm run build` | Production client build (`client/dist`) |
 | `npm start` | Plain server (serves built client) |
 | `npm run db:reset` | Deletes and re-seeds the DB at `DB_PATH` (stop the server first) |
@@ -68,7 +68,8 @@ explicitly approved (Feed & Inventory is the current approved phase).
 - All SQL parameterized; sort columns use whitelists. Multi-step writes use `db.transaction`.
 - Migrations: `server/db/migrations/NNN_name.sql` (SQLite), applied in order, tracked in
   `schema_migrations`. Current: 001_init, 002_health, 003_breeding, 004_employees,
-  005_transaction_link_indexes, 006_inventory, 007_auth, 008_milk_sales. PostgreSQL mirrors them 1:1 in
+  005_transaction_link_indexes, 006_inventory, 007_auth, 008_milk_sales,
+  009_gestation_settings. PostgreSQL mirrors them 1:1 in
   `server/db/pg/migrations/` with the same names, applied automatically at startup by
   `server/db/pgInit.js` (run by `db.ready()`), followed by a farm/user seed when empty.
   PG keeps TEXT dates/timestamps, `INTEGER` 0/1 booleans and `SERIAL` ids (int4) so API
@@ -172,12 +173,38 @@ Separate from Milk Production (no changes to `milk-records`). No `buyer` field (
   resolved price as read-only and disables save when no price applies to the date.
 - Sale dates: server accepts any valid date (client caps at today); prices may be future-dated.
 
+## Breeding gestation settings (per animal type)
+
+- `farms.cow_gestation_days` (default **283**) and `farms.buffalo_gestation_days` (default
+  **310**), added by `009_gestation_settings` (both dialects). The cow value is seeded from
+  the legacy `gestation_days` column so existing farms keep their configured behaviour; the
+  legacy column stays for compatibility but is no longer editable in the UI.
+- Settings UI: **Breeding Settings** card (own save state) → `GET/PUT /api/settings/breeding`
+  (both values required, whole numbers, 150–400). `PUT /api/settings` also accepts the two
+  fields when present and preserves them when absent. Server validation is authoritative.
+- **Server-authoritative expected calving**: on a confirmed pregnancy with
+  `expected_calving_estimated = 1`, breedingService computes `service_date + gestation`
+  from `animals.type` (`cow`/`buffalo`) + current settings and stores it, ignoring the
+  client-supplied date; manual entries (`estimated = 0`) keep the client date (validated as
+  before). A pregnant record for an unsupported type (`other`) → `400 details.animal_id`.
+- **History is immutable**: settings changes never rewrite stored breeding records; edits
+  that keep the service date preserve the stored expected calving date; only an explicit
+  service-date change recalculates an estimated date.
+- BreedingForm estimates per animal type from `meta.farm.{cow,buffalo}_gestation_days` and
+  shows `Gestation: N days` in the expected-calving hint. Manual date entry is preserved.
+- Tests: `gestation.test.js` (defaults, GET/PUT, zero/negative/decimal/non-numeric/range
+  rejection, cow/buffalo calculation incl. the 2026-09-28 → 2027-07-08 example, historical
+  immutability, service-change recalculation, pending attempt keeps pregnancy, unsupported
+  type, HTTP); `auth.test.js` covers session protection for `/api/settings/breeding`;
+  `pg-integration.test.js` covers the flow through the PG driver.
+
 ## Tests
 
 - Server (`node --test`, temp DBs via `DB_PATH` set before requires): `api-consistency`,
   `calculations`, `health`, `breeding`, `employees`, `linked-transactions`, `input-hardening`,
-  `inventory`, `milk-sales`, `backup-restore`, `backup-failures`, `server-bind`, `health-check`,
-  `config`, `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`, `pg-init`, `auth`.
+  `inventory`, `milk-sales`, `gestation`, `backup-restore`, `backup-failures`, `server-bind`,
+  `health-check`, `config`, `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`,
+  `pg-init`, `auth`.
   `auth.test.js` sets `AUTH_ENABLED=true` + `LOGIN_MAX_ATTEMPTS=5` before requires and
   covers setup/login/logout/me, generic 401s, Argon2id storage, session + CSRF cookies,
   401/403/429 paths, expired sessions, public health and protected farm workflows.
@@ -186,7 +213,7 @@ Separate from Milk Production (no changes to `milk-records`). No `buyer` field (
   metrics, HTTP validation and orphan/duplicate integrity checks.
 - Client: `client/tests/plural.test.js`.
 - Never weaken/delete tests. Fix genuine defects and add a regression test.
-- Expected: **180 server + 5 client = 185 passing, 0 failed, 0 skipped** (SQLite mode).
+- Expected: **196 server + 5 client = 201 passing, 0 failed, 0 skipped** (SQLite mode).
 - PG coverage: `pg-schema` asserts table/column/FK/unique/index parity between the SQLite and
   PostgreSQL migrations; `pg-driver` verifies placeholder conversion, `RETURNING id`, error
   classification and transaction client pinning (mock pool); `pg-integration` runs real service

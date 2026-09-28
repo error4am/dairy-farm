@@ -31,7 +31,8 @@ const movementService = require('../services/inventoryMovementService');
 const breedingService = require('../services/breedingService');
 const milkPriceService = require('../services/milkPriceService');
 const milkSaleService = require('../services/milkSaleService');
-const { todayLocal } = require('../utils/date');
+const settingsService = require('../services/settingsService');
+const { todayLocal, addDays } = require('../utils/date');
 
 const mem = newDb();
 mem.public.registerFunction({
@@ -199,6 +200,52 @@ test('services run end to end against a PostgreSQL driver', async () => {
   await milkSaleService.remove(sale.id);
   totals = await financeService.totals();
   assert.equal(totals.income, 0, 'deleting the sale removes its income');
+});
+
+test('gestation settings drive server-authoritative breeding calculations', async () => {
+  const defaults = await settingsService.getBreeding();
+  assert.equal(defaults.cow_gestation_days, 283, 'cow default survives the PG migration');
+  assert.equal(defaults.buffalo_gestation_days, 310, 'buffalo default survives the PG migration');
+
+  await settingsService.updateBreeding({ cow_gestation_days: 285, buffalo_gestation_days: 312 });
+
+  const cow = await animalService.create({ tag_number: 'PG-COW2', type: 'cow', gender: 'female' });
+  const buff = await animalService.create({ tag_number: 'PG-BUF', type: 'buffalo', gender: 'female' });
+
+  const cowPregnancy = await breedingService.create({
+    animal_id: cow.id,
+    service_date: today,
+    service_method: 'artificial_insemination',
+    pregnancy_check_date: today,
+    pregnancy_result: 'pregnant',
+    expected_calving_estimated: 1
+  });
+  assert.equal(cowPregnancy.expected_calving_date, addDays(today, 285), 'cow uses the configured duration');
+
+  const buffaloPregnancy = await breedingService.create({
+    animal_id: buff.id,
+    service_date: today,
+    service_method: 'artificial_insemination',
+    pregnancy_check_date: today,
+    pregnancy_result: 'pregnant',
+    expected_calving_estimated: 1
+  });
+  assert.equal(buffaloPregnancy.expected_calving_date, addDays(today, 312), 'buffalo uses the configured duration');
+
+  await settingsService.updateBreeding({ cow_gestation_days: 290, buffalo_gestation_days: 320 });
+
+  const unchangedCow = await breedingService.get(cowPregnancy.id);
+  const unchangedBuffalo = await breedingService.get(buffaloPregnancy.id);
+  assert.equal(unchangedCow.expected_calving_date, addDays(today, 285), 'history is not rewritten');
+  assert.equal(unchangedBuffalo.expected_calving_date, addDays(today, 312), 'history is not rewritten');
+
+  await assert.rejects(
+    () => settingsService.updateBreeding({ cow_gestation_days: 0, buffalo_gestation_days: 310 }),
+    (err) => err.status === 400 && Boolean(err.details.cow_gestation_days),
+    'zero gestation is rejected through the driver'
+  );
+
+  await settingsService.updateBreeding({ cow_gestation_days: 283, buffalo_gestation_days: 310 });
 });
 
 test('failed statements inside a transaction surface as errors without corrupting state', async () => {

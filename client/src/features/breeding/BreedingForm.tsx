@@ -68,16 +68,33 @@ export function BreedingForm({
     setErrors({});
   }, [open, initial, defaultAnimalId]);
 
-  function applyEstimate(service: string) {
-    if (!service) return;
-    setExpected(addDaysStr(service, meta.farm.gestation_days));
+  const selectedAnimal = animals.find((a) => a.id === Number(animalId));
+
+  function gestationFor(type?: string | null) {
+    if (type === 'cow') return meta.farm.cow_gestation_days;
+    if (type === 'buffalo') return meta.farm.buffalo_gestation_days;
+    return null;
+  }
+
+  const gestationDays = gestationFor(selectedAnimal?.type);
+
+  function applyEstimate(service: string, type?: string | null) {
+    const gestation = gestationFor(type);
+    if (!service || gestation == null) return;
+    setExpected(addDaysStr(service, gestation));
     setEstimated(true);
     setExpectedTouched(false);
   }
 
+  function onAnimalChange(value: string) {
+    setAnimalId(value);
+    const type = animals.find((a) => a.id === Number(value))?.type;
+    if (result === 'pregnant' && !expectedTouched && serviceDate) applyEstimate(serviceDate, type);
+  }
+
   function onServiceChange(value: string) {
     setServiceDate(value);
-    if (result === 'pregnant' && !expectedTouched) applyEstimate(value);
+    if (result === 'pregnant' && !expectedTouched) applyEstimate(value, selectedAnimal?.type);
   }
 
   function onResultChange(value: PregnancyResult) {
@@ -87,7 +104,7 @@ export function BreedingForm({
       setEstimated(false);
       setExpectedTouched(false);
     } else if (serviceDate && !expectedTouched) {
-      applyEstimate(serviceDate);
+      applyEstimate(serviceDate, selectedAnimal?.type);
     }
   }
 
@@ -181,7 +198,7 @@ export function BreedingForm({
             id="breed-animal"
             className={`select${errors.animal_id ? ' invalid' : ''}`}
             value={animalId}
-            onChange={(e) => setAnimalId(e.target.value)}
+            onChange={(e) => onAnimalChange(e.target.value)}
             autoFocus
           >
             <option value="">Select animal…</option>
@@ -270,8 +287,10 @@ export function BreedingForm({
           label="Expected calving date"
           error={errors.expected_calving_date}
           hint={
-            estimated
-              ? `Estimated from service date + ${meta.farm.gestation_days} days — adjust if needed`
+            gestationDays != null
+              ? estimated
+                ? `Gestation: ${gestationDays} days — estimated from service date + ${gestationDays} days; adjust if needed`
+                : `Gestation: ${gestationDays} days — enter the expected calving date`
               : 'Required when pregnant; can be estimated'
           }
           htmlFor="breed-expected"

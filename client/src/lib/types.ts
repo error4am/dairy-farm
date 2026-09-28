@@ -22,6 +22,8 @@ export interface Farm {
   milk_unit: string;
   week_start: WeekStart;
   gestation_days: number;
+  cow_gestation_days: number;
+  buffalo_gestation_days: number;
   created_at: string;
   updated_at: string;
 }
