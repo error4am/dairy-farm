@@ -1,6 +1,7 @@
 import { Icon } from '../components/Icon';
 import { useMeta } from '../lib/MetaContext';
 import { useAuth } from '../lib/AuthContext';
+import { AlertsBell } from './AlertsBell';
 
 export function Topbar({ onMenu, onRecordMilk }: { onMenu: () => void; onRecordMilk: () => void }) {
   const meta = useMeta();
@@ -22,6 +23,7 @@ export function Topbar({ onMenu, onRecordMilk }: { onMenu: () => void; onRecordM
       </div>
       <div className="topbar-right">
         <span className="topbar-date">{today}</span>
+        <AlertsBell />
         <button type="button" className="btn btn-primary btn-sm" onClick={onRecordMilk}>
           <Icon name="plus" size={15} /> Record Milk
         </button>

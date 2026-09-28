@@ -71,6 +71,7 @@ app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/meta', require('./routes/meta'));
+app.use('/api/alerts', require('./routes/alerts'));
 
 app.use('/api', notFound);
 
@@ -116,6 +117,16 @@ if (require.main === module) {
         } catch (err) {
           console.error(`Automatic backup failed: ${err.message}`);
         }
+      }
+
+      try {
+        const alertService = require('./services/alertService');
+        const alertResult = await alertService.runAlertEngine();
+        if (alertResult.created > 0 || alertResult.resolved > 0) {
+          console.log(`Alert engine: ${alertResult.created} created, ${alertResult.resolved} resolved`);
+        }
+      } catch (err) {
+        console.error(`Alert engine failed: ${err.message}`);
       }
 
       server = app.listen(PORT, HOST, () => {

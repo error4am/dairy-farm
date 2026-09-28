@@ -18,7 +18,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Vite (5173) + API (4000) with proxy — browser development |
-| `npm test` | Full suite: 196 server + 5 client = 201 tests (SQLite mode) |
+| `npm test` | Full suite: 213 server + 5 client = 218 tests (SQLite mode) |
 | `npm run build` | Production client build (`client/dist`) |
 | `npm start` | Plain server (serves built client) |
 | `npm run db:reset` | Deletes and re-seeds the DB at `DB_PATH` (stop the server first) |
@@ -69,7 +69,7 @@ explicitly approved (Feed & Inventory is the current approved phase).
 - Migrations: `server/db/migrations/NNN_name.sql` (SQLite), applied in order, tracked in
   `schema_migrations`. Current: 001_init, 002_health, 003_breeding, 004_employees,
   005_transaction_link_indexes, 006_inventory, 007_auth, 008_milk_sales,
-  009_gestation_settings. PostgreSQL mirrors them 1:1 in
+  009_gestation_settings, 010_alerts. PostgreSQL mirrors them 1:1 in
   `server/db/pg/migrations/` with the same names, applied automatically at startup by
   `server/db/pgInit.js` (run by `db.ready()`), followed by a farm/user seed when empty.
   PG keeps TEXT dates/timestamps, `INTEGER` 0/1 booleans and `SERIAL` ids (int4) so API
@@ -200,22 +200,71 @@ Separate from Milk Production (no changes to `milk-records`). No `buyer` field (
   type, HTTP); `auth.test.js` covers session protection for `/api/settings/breeding`;
   `pg-integration.test.js` covers the flow through the PG driver.
 
+## Alerts (in-app engine)
+
+Derived, farm-scoped in-app alerts — never stored user input, no email/SMS/WhatsApp/push.
+
+- **`alerts`** (`010_alerts`, both dialects): farm_id (FK farms), type
+  (`pregnancy_check|calving|treatment_followup|vaccination|milk_withdrawal|low_stock|out_of_stock`),
+  severity (`info|warning|critical`), title, message, source_type (`breeding|health|inventory_item`),
+  source_id (polymorphic, no FK), trigger_key, status (`unread|read|resolved`, default `unread`),
+  created_at/read_at/resolved_at. **`UNIQUE (farm_id, trigger_key)`** is the dedup guarantee
+  (table-level, for SQLite/PG parity) + indexes `idx_alerts_farm_status`,
+  `idx_alerts_farm_created`, `idx_alerts_source`.
+- **Engine** (`server/services/alertService.js`): `runAlertEngine()` (memoized while running),
+  `maybeRunAlertEngine()` (30 s in-memory throttle, errors swallowed) and
+  farm-scoped `list/unreadCount/markRead/resolve/get`. Two phases per run:
+  1) resolve every active (unread/read) alert whose `trigger_key` is no longer in the detected
+  active set — covers calved/edited/deleted sources, cleared due dates, ended withdrawals,
+  replenished stock and passed calving stages; 2) insert only when **no row exists for the key
+  in any status** (user-resolved alerts are never recreated; unique violations are caught via
+  `db.isUniqueViolation`). History is kept — nothing is ever deleted.
+- **Trigger keys** (stage encoded, so a new stage is a new event):
+  `pregnancy_check:breeding:{id}:{checkDate|none}`, `calving:breeding:{id}:{7d|3d|due}`,
+  `treatment|vaccination:health:{id}:{next_due_date}`, `withdrawal:health:{id}:{withdrawal_until}`,
+  `low|out_stock:inventory_item:{id}:{episodeStart}` where `episodeStart` is the movement id
+  that started the current below-threshold episode (a low → replenish → low cycle is a new event).
+- **Windows**: pregnancy check = pending record, check date null (immediate) or ≤ today+7;
+  calving = pregnant, not calved, expected date set: d≤0 `due` (critical), 1–3 `3d`,
+  4–7 `7d` (warning), else none; health due = `next_due_date ≤ today+1` (overdue included);
+  withdrawal = `withdrawal_until` today/tomorrow (info); inventory = active items only,
+  stock ≤ 0 → `out_of_stock` (critical), 0 < stock ≤ `minimum_stock` → `low_stock` (warning),
+  never both at once. Messages use `Cow #tag`/`Buffalo #tag` labels and existing `trimNumber`.
+- **Execution**: startup hook in `server/index.js` (`require.main` block, errors logged),
+  throttled auto-run on `GET /api/alerts` + `GET /api/alerts/unread-count`, and an always-on
+  `POST /api/alerts/run`. No queue/cron/Redis; throttle is per process.
+- **API** (`server/routes/alerts.js`, mounted after the auth gate → session + CSRF apply):
+  `GET /` (status filter `all|active|unread|read|resolved`, limit 25/offset, `{items,total,limit,offset}`),
+  `GET /unread-count` → `{count}`, `POST /run`, `POST /:id/read`, `POST /:id/resolve`
+  (404 for unknown/foreign-farm ids; farm_id never trusted from the client).
+- **UI**: `client/src/app/AlertsBell.tsx` in the Topbar (bell + unread badge, popover with
+  active alerts, severity dots, `formatRelative`, per-item mark-read/dismiss, links
+  breeding → `/breeding`, health → `/health`, inventory → `/inventory/{id}`; reloads on
+  `useData().version`). Styles: "Alerts bell" section in `styles/app.css`.
+- **Tests**: `alerts.test.js` (migration shape/unique constraint, pregnancy/calving/health/
+  withdrawal/inventory detection + stage keys + messages, idempotent re-runs, DB-level
+  duplicate rejection, source lifecycle resolution, milk still blocked during withdrawal,
+  inventory low→out→restock→re-low episodes, farm scoping, service + HTTP coverage) and the
+  alerts session/CSRF cases in `auth.test.js`.
+
 ## Tests
 
 - Server (`node --test`, temp DBs via `DB_PATH` set before requires): `api-consistency`,
   `calculations`, `health`, `breeding`, `employees`, `linked-transactions`, `input-hardening`,
   `inventory`, `milk-sales`, `gestation`, `backup-restore`, `backup-failures`, `server-bind`,
   `health-check`, `config`, `sql-dialect`, `pg-driver`, `pg-schema`, `pg-integration`,
-  `pg-init`, `auth`.
+  `pg-init`, `auth`, `alerts`.
   `auth.test.js` sets `AUTH_ENABLED=true` + `LOGIN_MAX_ATTEMPTS=5` before requires and
   covers setup/login/logout/me, generic 401s, Argon2id storage, session + CSRF cookies,
-  401/403/429 paths, expired sessions, public health and protected farm workflows.
+  401/403/429 paths, expired sessions, public health, protected farm workflows and the
+  alerts API (401 without a session, 403 without/with a wrong CSRF token, read/resolve
+  with a valid token).
   `milk-sales.test.js` covers price history CRUD/resolution, server-authoritative revenue,
   exactly-one linked income, edit/delete propagation, production/sales separation, dashboard
   metrics, HTTP validation and orphan/duplicate integrity checks.
 - Client: `client/tests/plural.test.js`.
 - Never weaken/delete tests. Fix genuine defects and add a regression test.
-- Expected: **196 server + 5 client = 201 passing, 0 failed, 0 skipped** (SQLite mode).
+- Expected: **213 server + 5 client = 218 passing, 0 failed, 0 skipped** (SQLite mode).
 - PG coverage: `pg-schema` asserts table/column/FK/unique/index parity between the SQLite and
   PostgreSQL migrations; `pg-driver` verifies placeholder conversion, `RETURNING id`, error
   classification and transaction client pinning (mock pool); `pg-integration` runs real service
@@ -247,12 +296,15 @@ Separate from Milk Production (no changes to `milk-records`). No `buyer` field (
 - `master` = validated baseline **96abcdc**, pushed.
 - `feature/electron-packaging` = Electron packaging **449663b** + AGENTS.md **49a0806**, pushed.
   Electron is a preserved milestone/offline edition — do not delete it.
-- `feature/feed-inventory` = **current branch**. Feed & Inventory is committed as **ed967ee**,
-  the online staging work as **80c6e07** + **46d8c50**, owner authentication (Argon2id
-  setup/login, sessions, CSRF, rate limit, 007_auth migrations, login/setup UI, tests, docs)
-  as **34582f4**, and Milk Sales + Price History (008_milk_sales migrations, price/sale
-  services + routes, UI, tests, docs) as the tip commit — all pushed. Do not commit/push
-  further work without owner approval.
+- `feature/feed-inventory` = **current branch**, tip **6d906a0** (all pushed). Feed & Inventory
+  is committed as **ed967ee**, the online staging work as **80c6e07** + **46d8c50**, owner
+  authentication (Argon2id setup/login, sessions, CSRF, rate limit, 007_auth migrations,
+  login/setup UI, tests, docs) as **34582f4**, Milk Sales + Price History (008_milk_sales
+  migrations, price/sale services + routes, UI, tests, docs) as **83e2332**, gestation
+  settings (009) as **9639041**, and the CSRF-duplication / milk-remaining fixes as
+  **6d906a0**. The in-app Alerts engine (010_alerts, alertService, routes, bell UI, tests)
+  is currently **uncommitted** working-tree work. Do not commit/push further work without
+  owner approval.
 - SQLite + Electron remain the active local edition; the online/PostgreSQL path is now
   implemented for staging. Electron must keep working: `server/index.js` still exports the app
   synchronously, `db/connection.js` still exports a better-sqlite3 handle, and `db/backup.js`
@@ -281,7 +333,7 @@ Separate from Milk Production (no changes to `milk-records`). No `buyer` field (
 
 ## Future requirements (do NOT implement without approval)
 
-Alerts (in-app, derived from existing data), Feed consumption prediction, Reports/exports,
+Feed consumption prediction, Reports/exports,
 Notifications (email/SMS/WhatsApp/push), Multi-farm SaaS, Mobile app/PWA, AI features,
 online backup/restore, cloud sync, auto-updates.
 

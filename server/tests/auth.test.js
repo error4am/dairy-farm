@@ -398,6 +398,85 @@ test('login rate limiting counts failures, resets on success and blocks after th
   assert.equal(recovered.status, 200, 'window expiry resets the limit');
 });
 
+test('alerts API requires a session and enforces CSRF on mutations', async () => {
+  const noSessionGet = await fetch(base + '/api/alerts');
+  assert.equal(noSessionGet.status, 401, 'alerts list requires a session');
+
+  const noSessionCount = await fetch(base + '/api/alerts/unread-count');
+  assert.equal(noSessionCount.status, 401, 'unread count requires a session');
+
+  const csrf = jar.get('dairy_csrf');
+  const noSessionRun = await fetch(base + '/api/alerts/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: `dairy_csrf=${csrf}`, 'X-CSRF-Token': csrf }
+  });
+  assert.equal(noSessionRun.status, 401, 'engine trigger requires a session once CSRF passes');
+
+  const sessionCookie = `dairy_session=${jar.get('dairy_session')}`;
+
+  const missingToken = await fetch(base + '/api/alerts/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: `${sessionCookie}; dairy_csrf=${csrf}` },
+    body: '{}'
+  });
+  assert.equal(missingToken.status, 403, 'session without the CSRF header is rejected');
+  assert.deepEqual(await missingToken.json(), { error: 'Invalid CSRF token.' });
+
+  const wrongToken = await fetch(base + '/api/alerts/run', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `${sessionCookie}; dairy_csrf=${csrf}`,
+      'X-CSRF-Token': 'not-the-real-token'
+    },
+    body: '{}'
+  });
+  assert.equal(wrongToken.status, 403, 'session with a wrong CSRF token is rejected');
+
+  const listed = await req('GET', '/api/alerts');
+  assert.equal(listed.status, 200, 'authenticated list works');
+  assert.ok(Array.isArray(listed.data.items), 'alert payload shape');
+
+  const run = await req('POST', '/api/alerts/run');
+  assert.equal(run.status, 200, 'session + correct CSRF token run the engine');
+  assert.equal(typeof run.data.created, 'number');
+
+  connection
+    .prepare(
+      `INSERT INTO alerts (farm_id, type, severity, title, message, source_type, source_id, trigger_key, status, created_at)
+       VALUES (1, 'low_stock', 'warning', 'Auth test alert', 'Session/CSRF coverage row', 'inventory_item', 99901, 'low_stock:inventory_item:99901:0', 'unread', datetime('now'))`
+    )
+    .run();
+  const row = connection
+    .prepare("SELECT * FROM alerts WHERE farm_id = 1 AND trigger_key = 'low_stock:inventory_item:99901:0'")
+    .get();
+  assert.ok(row, 'test alert row exists');
+
+  const readNoCsrf = await fetch(base + `/api/alerts/${row.id}/read`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: sessionCookie }
+  });
+  assert.equal(readNoCsrf.status, 403, 'mark read without the CSRF header is rejected');
+
+  const read = await req('POST', `/api/alerts/${row.id}/read`);
+  assert.equal(read.status, 200, 'mark read with a valid CSRF token works');
+  assert.equal(read.data.status, 'read');
+  assert.ok(read.data.read_at, 'read_at stamped');
+
+  const resolveNoCsrf = await fetch(base + `/api/alerts/${row.id}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: sessionCookie }
+  });
+  assert.equal(resolveNoCsrf.status, 403, 'resolve without the CSRF header is rejected');
+
+  const resolve = await req('POST', `/api/alerts/${row.id}/resolve`);
+  assert.equal(resolve.status, 200, 'resolve with a valid CSRF token works');
+  assert.equal(resolve.data.status, 'resolved');
+  assert.ok(resolve.data.resolved_at, 'resolved_at stamped');
+
+  connection.prepare('DELETE FROM alerts WHERE id = ?').run(row.id);
+});
+
 after(async () => {
   if (server) {
     server.close();

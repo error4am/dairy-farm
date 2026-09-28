@@ -14,6 +14,33 @@ export type PaymentType = 'salary' | 'advance' | 'bonus' | 'other';
 export type InventoryCategory = 'concentrate' | 'silage' | 'fodder' | 'mineral' | 'supply' | 'other';
 export type InventoryMovementType = 'opening' | 'purchase' | 'consumption' | 'waste' | 'adjustment';
 export type AdjustmentDirection = 'increase' | 'decrease';
+export type AlertType =
+  | 'pregnancy_check'
+  | 'calving'
+  | 'treatment_followup'
+  | 'vaccination'
+  | 'milk_withdrawal'
+  | 'low_stock'
+  | 'out_of_stock';
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+export type AlertStatus = 'unread' | 'read' | 'resolved';
+export type AlertSourceType = 'breeding' | 'health' | 'inventory_item';
+
+export interface Alert {
+  id: number;
+  farm_id: number;
+  type: AlertType;
+  severity: AlertSeverity;
+  title: string;
+  message: string;
+  source_type: AlertSourceType;
+  source_id: number;
+  trigger_key: string;
+  status: AlertStatus;
+  created_at: string;
+  read_at: string | null;
+  resolved_at: string | null;
+}
 
 export interface Farm {
   id: number;

@@ -14,6 +14,18 @@ const PAYMENT_TYPES = ['salary', 'advance', 'bonus', 'other'];
 const INVENTORY_CATEGORIES = ['concentrate', 'silage', 'fodder', 'mineral', 'supply', 'other'];
 const INVENTORY_MOVEMENT_TYPES = ['opening', 'purchase', 'consumption', 'waste', 'adjustment'];
 const ADJUSTMENT_DIRECTIONS = ['increase', 'decrease'];
+const ALERT_TYPES = [
+  'pregnancy_check',
+  'calving',
+  'treatment_followup',
+  'vaccination',
+  'milk_withdrawal',
+  'low_stock',
+  'out_of_stock'
+];
+const ALERT_SEVERITIES = ['info', 'warning', 'critical'];
+const ALERT_STATUSES = ['unread', 'read', 'resolved'];
+const ALERT_SOURCE_TYPES = ['breeding', 'health', 'inventory_item'];
 
 module.exports = {
   ANIMAL_TYPES,
@@ -31,5 +43,9 @@ module.exports = {
   PAYMENT_TYPES,
   INVENTORY_CATEGORIES,
   INVENTORY_MOVEMENT_TYPES,
-  ADJUSTMENT_DIRECTIONS
+  ADJUSTMENT_DIRECTIONS,
+  ALERT_TYPES,
+  ALERT_SEVERITIES,
+  ALERT_STATUSES,
+  ALERT_SOURCE_TYPES
 };
