@@ -13,6 +13,8 @@ function csrfCookieOptions() {
 
 function ensureCsrfToken(req, res) {
   if (req.cookies && req.cookies[CSRF_COOKIE]) return;
+  if (req.csrfCookieIssued) return;
+  req.csrfCookieIssued = true;
   res.cookie(CSRF_COOKIE, crypto.randomBytes(32).toString('base64url'), csrfCookieOptions());
 }
 

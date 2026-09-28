@@ -92,7 +92,7 @@ export interface MilkSaleSummary {
     to: string | null;
     produced: number;
     sold: number;
-    remaining: number;
+    remaining: number | null;
     revenue: number;
     sales_count: number;
   };

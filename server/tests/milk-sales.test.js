@@ -519,6 +519,70 @@ test('HTTP routes validate input and drive the full sale lifecycle', async () =>
   assert.equal(missing.status, 404, 'unknown sale reports not found');
 });
 
+test('range remaining is truthful: balance when sold <= produced, no negative remaining when sold > produced', async () => {
+  const animal = await animalService.create({ tag_number: 'REMAIN-1', type: 'cow', gender: 'female' });
+
+  const dayUnder = addDays(today, -30);
+  const dayEqual = addDays(today, -29);
+  const dayOver = addDays(today, -28);
+  await priceService.create({ price_per_litre: 300, effective_date: addDays(dayUnder, -1) });
+
+  const milkSnapshot = db.prepare('SELECT id, animal_id, date, session, quantity, unit FROM milk_records ORDER BY id').all();
+  const salesSnapshot = db
+    .prepare('SELECT id, date, litres, price_per_litre, revenue FROM milk_sales ORDER BY id')
+    .all();
+  const productionBefore = db.prepare('SELECT COALESCE(SUM(quantity), 0) AS total FROM milk_records').get().total;
+  const incomeBefore = (await financeService.totals()).income;
+
+  await milkService.create({ animal_id: animal.id, date: dayUnder, session: 'morning', quantity: 50, unit: 'L' });
+  await milkService.create({ animal_id: animal.id, date: dayEqual, session: 'morning', quantity: 30, unit: 'L' });
+  await milkService.create({ animal_id: animal.id, date: dayOver, session: 'morning', quantity: 10, unit: 'L' });
+
+  const saleUnder = await saleService.create({ date: dayUnder, litres: 20 });
+  const saleEqual = await saleService.create({ date: dayEqual, litres: 30 });
+  const saleOver = await saleService.create({ date: dayOver, litres: 45 });
+
+  const under = await saleService.summary({ from: dayUnder, to: dayUnder });
+  assertClose(under.range.produced, 50, 'produced in the sold<produced range');
+  assertClose(under.range.sold, 20, 'sold in the sold<produced range');
+  assertClose(under.range.remaining, 30, 'sold < produced shows remaining = produced - sold');
+
+  const equal = await saleService.summary({ from: dayEqual, to: dayEqual });
+  assertClose(equal.range.produced, 30, 'produced in the equal range');
+  assertClose(equal.range.sold, 30, 'sold in the equal range');
+  assertClose(equal.range.remaining, 0, 'sold = produced shows zero remaining');
+
+  const over = await saleService.summary({ from: dayOver, to: dayOver });
+  assertClose(over.range.produced, 10, 'produced in the sold>produced range');
+  assertClose(over.range.sold, 45, 'sold in the sold>produced range');
+  assert.equal(over.range.remaining, null, 'sold > produced never reports a negative remaining');
+
+  assertClose(over.range.revenue, saleOver.revenue, 'revenue is unchanged by the remaining fix');
+  assertClose(
+    (await financeService.totals()).income,
+    incomeBefore + saleUnder.revenue + saleEqual.revenue + saleOver.revenue,
+    'income totals only grow by the new sales'
+  );
+
+  const productionAfter = db.prepare('SELECT COALESCE(SUM(quantity), 0) AS total FROM milk_records').get().total;
+  assertClose(productionAfter, productionBefore + 90, 'production totals only grow by the new records');
+
+  const milkAfter = db.prepare('SELECT id, animal_id, date, session, quantity, unit FROM milk_records ORDER BY id').all();
+  const salesAfter = db
+    .prepare('SELECT id, date, litres, price_per_litre, revenue FROM milk_sales ORDER BY id')
+    .all();
+  assert.deepEqual(
+    milkAfter.slice(0, milkSnapshot.length),
+    milkSnapshot,
+    'existing milk production records are unchanged'
+  );
+  assert.deepEqual(
+    salesAfter.slice(0, salesSnapshot.length),
+    salesSnapshot,
+    'existing milk sale records are unchanged'
+  );
+});
+
 test('final integrity: no orphan sales, no unlinked milk incomes, no duplicate links', async () => {
   const orphanSales = countRows(
     'SELECT CAST(COUNT(*) AS INTEGER) AS n FROM milk_sales s LEFT JOIN transactions t ON t.id = s.transaction_id WHERE s.transaction_id IS NOT NULL AND t.id IS NULL'

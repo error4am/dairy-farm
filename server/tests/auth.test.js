@@ -234,6 +234,53 @@ test('mutating farm requests require a valid CSRF token', async () => {
   assert.equal(withToken.data.tag_number, 'AUTH-1');
 });
 
+test('auth GETs issue exactly one CSRF cookie and CSRF validation stays strict', async () => {
+  jar.delete('dairy_csrf');
+  const status = await req('GET', '/api/auth/status');
+  assert.equal(status.status, 200);
+  const statusCsrfCookies = status.setCookies.filter((setCookie) => setCookie.startsWith('dairy_csrf='));
+  assert.equal(statusCsrfCookies.length, 1, 'exactly one dairy_csrf Set-Cookie on /auth/status');
+  assert.ok(jar.has('dairy_csrf') && jar.get('dairy_csrf').length > 0, 'client still receives the CSRF cookie');
+
+  jar.delete('dairy_csrf');
+  const me = await req('GET', '/api/auth/me');
+  const meCsrfCookies = me.setCookies.filter((setCookie) => setCookie.startsWith('dairy_csrf='));
+  assert.equal(meCsrfCookies.length, 1, 'exactly one dairy_csrf Set-Cookie on /auth/me');
+
+  const repeat = await req('GET', '/api/auth/status');
+  const repeatCsrfCookies = repeat.setCookies.filter((setCookie) => setCookie.startsWith('dairy_csrf='));
+  assert.equal(repeatCsrfCookies.length, 0, 'an existing cookie is not re-issued');
+
+  const missing = await fetch(base + '/api/animals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag_number: 'CSRF-MISSING', type: 'cow', gender: 'female' })
+  });
+  assert.equal(missing.status, 403, 'missing CSRF token still returns 403');
+
+  const wrong = await fetch(base + '/api/animals', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: `dairy_csrf=${jar.get('dairy_csrf')}`,
+      'X-CSRF-Token': 'not-the-real-token'
+    },
+    body: JSON.stringify({ tag_number: 'CSRF-WRONG', type: 'cow', gender: 'female' })
+  });
+  assert.equal(wrong.status, 403, 'wrong CSRF token still returns 403');
+
+  const meAfter = await req('GET', '/api/auth/me');
+  assert.equal(meAfter.data.authenticated, true, 'session remains valid after CSRF checks');
+
+  const settings = await req('GET', '/api/settings/breeding');
+  assert.equal(settings.status, 200);
+  const saved = await req('PUT', '/api/settings/breeding', {
+    cow_gestation_days: settings.data.cow_gestation_days,
+    buffalo_gestation_days: settings.data.buffalo_gestation_days
+  });
+  assert.equal(saved.status, 200, 'authenticated state-changing request with the correct CSRF token works');
+});
+
 test('existing farm modules keep working after authentication', async () => {
   const animals = await req('GET', '/api/animals');
   const animal = animals.data.find((item) => item.tag_number === 'AUTH-1');

@@ -256,8 +256,13 @@ export function MilkSalesPage() {
         />
         <StatCard
           label="Unsold / Remaining"
-          value={summary ? formatQuantity(summary.range.remaining, unit) : '—'}
-          tone={summary && summary.range.remaining < 0 ? 'negative' : undefined}
+          value={
+            summary
+              ? summary.range.remaining === null
+                ? '—'
+                : formatQuantity(summary.range.remaining, unit)
+              : '—'
+          }
           hint={
             summary
               ? `Produced ${formatQuantity(summary.range.produced, unit)} · Sold ${formatQuantity(

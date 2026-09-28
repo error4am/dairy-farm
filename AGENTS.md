@@ -167,6 +167,8 @@ Separate from Milk Production (no changes to `milk-records`). No `buyer` field (
   (`GET /`, `GET /applicable?date=`, POST, PUT, DELETE). `summary` returns `unit`, `currency`,
   `current_price`, `range {produced, sold, remaining, revenue, sales_count}` (produced from
   `milk_records`, sold from `milk_sales` — the two stay fully separate) and `today/week/month`.
+  `remaining` is `produced − sold` when non-negative and `null` when sales exceed production in
+  the range; the UI then shows `—` with the produced/sold figures instead of a negative balance.
   `/api/dashboard` exposes `metrics.milk_sales.{sold_today, revenue_today, sold_month, revenue_month}`.
 - **UI**: sidebar **Milk Sales** → `/milk-sales` (cart icon): stat cards, period presets, sales
   table + pagination, price history card, `SaleForm`/`PriceForm` modals. The sale form shows the

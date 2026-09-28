@@ -155,6 +155,7 @@ async function summary(query = {}) {
 
   const producedTotal = round3(produced.total);
   const soldTotal = round3(sold.litres);
+  const remainingTotal = round3(producedTotal - soldTotal);
 
   return {
     unit: farm.milk_unit,
@@ -165,7 +166,7 @@ async function summary(query = {}) {
       to,
       produced: producedTotal,
       sold: soldTotal,
-      remaining: round3(producedTotal - soldTotal),
+      remaining: remainingTotal >= 0 ? remainingTotal : null,
       revenue: round2(sold.revenue),
       sales_count: sold.count
     },
