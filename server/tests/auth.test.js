@@ -358,6 +358,20 @@ test('milk sales API requires a session', async () => {
   assert.equal(Array.isArray(sales.data.items), true, 'the sales payload keeps its shape');
 });
 
+test('dashboard milk production API requires a session', async () => {
+  const noSession = await fetch(base + '/api/dashboard/milk-production?range=7');
+  assert.equal(noSession.status, 401, 'milk production trend requires a session');
+
+  const signedIn = await login(OWNER_EMAIL, OWNER_PASSWORD);
+  assert.equal(signedIn.status, 200, 'owner can log back in');
+
+  const series = await req('GET', '/api/dashboard/milk-production?range=7');
+  assert.equal(series.status, 200, 'trend is readable after login');
+  assert.equal(series.data.range, 7, 'the requested range is echoed');
+  assert.equal(series.data.data.length, 7, 'seven days returned');
+  assert.equal(typeof series.data.unit, 'string', 'the milk unit is returned');
+});
+
 test('expired sessions are rejected', async () => {
   const token = 'expired-session-token-for-testing';
   const id = crypto.createHash('sha256').update(token).digest('hex');

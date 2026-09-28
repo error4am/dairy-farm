@@ -1,5 +1,6 @@
 const db = require('../db');
 const { FARM_ID } = require('../config');
+const { HttpError } = require('../middleware/errors');
 const settingsService = require('./settingsService');
 const financeService = require('./financeService');
 const healthService = require('./healthService');
@@ -170,4 +171,32 @@ async function get() {
   };
 }
 
-module.exports = { get };
+const MILK_TREND_RANGES = [7, 30, 90];
+const MILK_TREND_DEFAULT_RANGE = 30;
+
+async function milkProduction(range) {
+  const requested = range === undefined ? MILK_TREND_DEFAULT_RANGE : Number(range);
+  if (!MILK_TREND_RANGES.includes(requested)) {
+    throw new HttpError(400, 'Range must be one of 7, 30 or 90 days.', {
+      range: 'Range must be one of 7, 30 or 90 days.'
+    });
+  }
+  const farm = await settingsService.get();
+  const today = todayLocal();
+  const dates = lastNDates(requested, today);
+  const rows = await db.all(
+    `SELECT date, SUM(quantity) AS total FROM milk_records
+     WHERE farm_id = ? AND date >= ? AND date <= ?
+     GROUP BY date`,
+    [FARM_ID, dates[0], today]
+  );
+  const byDate = new Map(rows.map((r) => [r.date, round3(Number(r.total))]));
+
+  return {
+    range: requested,
+    unit: farm.milk_unit,
+    data: dates.map((date) => ({ date, litres: byDate.get(date) || 0 }))
+  };
+}
+
+module.exports = { get, milkProduction };

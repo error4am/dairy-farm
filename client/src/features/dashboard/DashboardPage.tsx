@@ -10,6 +10,7 @@ import { TransactionForm } from '../finances/TransactionForm';
 import { useApi } from '../../lib/useApi';
 import { useMeta } from '../../lib/MetaContext';
 import { formatMoney, formatQuantity, formatRelative, trimNumber } from '../../lib/format';
+import { MilkProductionTrend } from './MilkProductionTrend';
 import type { Animal, Dashboard } from '../../lib/types';
 
 type QuickAction = 'animal' | 'milk' | 'income' | 'expense' | null;
@@ -101,6 +102,8 @@ export function DashboardPage() {
           to="/milk-sales"
         />
       </div>
+
+      <MilkProductionTrend />
 
       <div className="grid-2">
         <div className="card">

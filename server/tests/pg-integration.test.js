@@ -32,6 +32,7 @@ const breedingService = require('../services/breedingService');
 const milkPriceService = require('../services/milkPriceService');
 const milkSaleService = require('../services/milkSaleService');
 const settingsService = require('../services/settingsService');
+const dashboardService = require('../services/dashboardService');
 const { todayLocal, addDays } = require('../utils/date');
 
 const mem = newDb();
@@ -246,6 +247,31 @@ test('gestation settings drive server-authoritative breeding calculations', asyn
   );
 
   await settingsService.updateBreeding({ cow_gestation_days: 283, buffalo_gestation_days: 310 });
+});
+
+test('dashboard milk production trend runs through the PostgreSQL driver', async () => {
+  const series = await dashboardService.milkProduction(7);
+  assert.equal(series.range, 7, 'the requested range is echoed');
+  assert.equal(series.data.length, 7, 'one entry per day');
+  assert.equal(series.data[series.data.length - 1].date, today, 'the window ends today');
+  assert.equal(series.data[0].litres, 0, 'empty days before the recorded milk are zero-filled');
+
+  const raw = await driver.get(
+    'SELECT COALESCE(SUM(quantity), 0) AS total FROM milk_records WHERE farm_id = ? AND date = ?',
+    [1, today]
+  );
+  const todayEntry = series.data[series.data.length - 1];
+  assert.ok(
+    Math.abs(todayEntry.litres - Number(raw.total)) <= 0.001,
+    'trend total matches the raw driver sum'
+  );
+  assert.equal(typeof todayEntry.litres, 'number', 'PG values stay JSON numbers');
+
+  await assert.rejects(
+    () => dashboardService.milkProduction(13),
+    (err) => err.status === 400 && /7, 30 or 90/.test(err.message),
+    'invalid ranges are rejected through the driver'
+  );
 });
 
 test('failed statements inside a transaction surface as errors without corrupting state', async () => {

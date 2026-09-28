@@ -428,6 +428,12 @@ export interface Dashboard {
   milk_last_7_days: { date: string; total: number }[];
 }
 
+export interface MilkProductionSeries {
+  range: number;
+  unit: string;
+  data: { date: string; litres: number }[];
+}
+
 export interface MilkSummary {
   unit: string;
   range: {
